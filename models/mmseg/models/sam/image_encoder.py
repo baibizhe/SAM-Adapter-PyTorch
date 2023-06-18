@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-
+import cv2
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
@@ -9,6 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from typing import Optional, Tuple, Type
+
+from torchvision.transforms import transforms
 
 from .common import LayerNorm2d, MLPBlock
 import math
@@ -20,6 +22,9 @@ if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
     from torch._six import container_abcs
 else:
     import collections.abc as container_abcs
+def swish(x):
+    return x * torch.sigmoid(x)
+ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
 class ImageEncoderViT(nn.Module):
@@ -121,6 +126,8 @@ class ImageEncoderViT(nn.Module):
         self.handcrafted_tune = True
         self.embedding_tune = True
         self.adaptor = 'adaptor'
+        # self.color_jittor = transforms.Compose([transforms.ColorJitter()])
+
         self.prompt_generator = PromptGenerator(self.scale_factor, self.prompt_type, self.embed_dim,
                                                 self.tuning_stage, self.depth,
                                                 self.input_type, self.freq_nums,
@@ -132,24 +139,48 @@ class ImageEncoderViT(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         inp = x
         x = self.patch_embed(x)
-
-        embedding_feature = self.prompt_generator.init_embeddings(x)
-        handcrafted_feature = self.prompt_generator.init_handcrafted(inp)
+        embedding_feature = self.prompt_generator.init_embeddings(x)  #simple embedding_generator(x)
+        handcrafted_feature = self.prompt_generator.init_handcrafted(inp) #fft(inp)  | prompt_generator():PatchEmbed2():Conv2d()
         prompt = self.prompt_generator.get_prompt(handcrafted_feature, embedding_feature)
+
+        # x= self.color_jittor(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
 
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         outs = []
+
         for i, blk in enumerate(self.blocks):
+            # print(prompt[i].reshape(B, H, W, -1).shape,158)
             x = prompt[i].reshape(B, H, W, -1) + x
             x = blk(x)
             if i in self.out_indices:
                 outs.append(x)
-
         x = self.neck(x.permute(0, 3, 1, 2))
-
         return x
+    # This is forwrd this gt
+    # def forward(self, x: torch.Tensor,gt:torch.Tensor) -> torch.Tensor:
+    #
+    #     inp = x
+    #     x = self.patch_embed(x)
+    #     embedding_feature = self.prompt_generator.init_embeddings(x)
+    #     handcrafted_feature = self.prompt_generator.init_handcrafted_gt(gt.repeat(1,3,1,1))
+    #
+    #     # handcrafted_feature = self.prompt_generator.prompt_generator(gt_prompt)
+    #     prompt = self.prompt_generator.get_prompt(handcrafted_feature, embedding_feature)
+    #     if self.pos_embed is not None:
+    #         x = x + self.pos_embed
+    #
+    #     B, H, W = x.shape[0], x.shape[1], x.shape[2]
+    #     outs = []
+    #
+    #     for i, blk in enumerate(self.blocks):
+    #         x = prompt[i].reshape(B, H, W, -1) + x
+    #         x = blk(x)
+    #         if i in self.out_indices:
+    #             outs.append(x)
+    #     x = self.neck(x.permute(0, 3, 1, 2))
+    #     return x
 
 def to_2tuple(x):
     if isinstance(x, container_abcs.Iterable):
@@ -211,6 +242,134 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         tensor.clamp_(min=a, max=b)
         return tensor
 
+#
+# class PromptGenerator(nn.Module):
+#     def __init__(self, scale_factor, prompt_type, embed_dim, tuning_stage, depth, input_type,
+#                  freq_nums, handcrafted_tune, embedding_tune, adaptor, img_size, patch_size):
+#         """
+#         Args:
+#         """
+#         super(PromptGenerator, self).__init__()
+#         self.scale_factor = scale_factor
+#         self.prompt_type = prompt_type
+#         self.embed_dim = embed_dim
+#         self.input_type = input_type
+#         self.freq_nums = freq_nums
+#         self.tuning_stage = tuning_stage
+#         self.depth = depth
+#         self.handcrafted_tune = handcrafted_tune
+#         self.embedding_tune = embedding_tune
+#         self.adaptor = adaptor
+#
+#         self.shared_mlp = nn.Linear(self.embed_dim//self.scale_factor, self.embed_dim)
+#         self.embedding_generator = nn.Linear(self.embed_dim, self.embed_dim//self.scale_factor)
+#         for i in range(self.depth):
+#             lightweight_mlp = nn.Sequential(
+#                 nn.Linear(self.embed_dim//self.scale_factor, self.embed_dim//self.scale_factor),
+#                 nn.GELU()
+#             )
+#             setattr(self, 'lightweight_mlp_{}'.format(str(i)), lightweight_mlp)
+#
+#         self.prompt_generator = PatchEmbed2(img_size=img_size,
+#                                                    patch_size=patch_size, in_chans=3,
+#                                                    embed_dim=self.embed_dim//self.scale_factor)
+#
+#         self.apply(self._init_weights)
+#
+#     def _init_weights(self, m):
+#         if isinstance(m, nn.Linear):
+#             trunc_normal_(m.weight, std=.02)
+#             if isinstance(m, nn.Linear) and m.bias is not None:
+#                 nn.init.constant_(m.bias, 0)
+#         elif isinstance(m, nn.LayerNorm):
+#             nn.init.constant_(m.bias, 0)
+#             nn.init.constant_(m.weight, 1.0)
+#         elif isinstance(m, nn.Conv2d):
+#             fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+#             fan_out //= m.groups
+#             m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+#             if m.bias is not None:
+#                 m.bias.data.zero_()
+#
+#     def init_embeddings(self, x):
+#         N, C, H, W = x.permute(0, 3, 1, 2).shape
+#         x = x.reshape(N, C, H*W).permute(0, 2, 1)
+#         return self.embedding_generator(x)
+#
+#     def init_handcrafted(self, x):
+#         x = self.fft(x, self.freq_nums)
+#         return self.prompt_generator(x)
+#
+#     def get_prompt(self, handcrafted_feature, embedding_feature):
+#         N, C, H, W = handcrafted_feature.shape
+#         handcrafted_feature = handcrafted_feature.view(N, C, H*W).permute(0, 2, 1)
+#         prompts = []
+#         for i in range(self.depth):
+#             lightweight_mlp = getattr(self, 'lightweight_mlp_{}'.format(str(i)))
+#             # prompt = proj_prompt(prompt)
+#             prompt = lightweight_mlp(handcrafted_feature + embedding_feature)
+#             # print(prompt.shape,'prompt')
+#             prompts.append(self.shared_mlp(prompt))
+#             # print(self.shared_mlp(prompt).shape,'shared_mlp(prompt)')
+#
+#         return prompts
+#
+#     def forward(self, x):
+#         if self.input_type == 'laplacian':
+#             pyr_A = self.lap_pyramid.pyramid_decom(img=x, num=self.freq_nums)
+#             x = pyr_A[:-1]
+#             laplacian = x[0]
+#             for x_i in x[1:]:
+#                 x_i = F.interpolate(x_i, size=(laplacian.size(2), laplacian.size(3)), mode='bilinear', align_corners=True)
+#                 laplacian = torch.cat([laplacian, x_i], dim=1)
+#             x = laplacian
+#         elif self.input_type == 'fft':
+#             x = self.fft(x, self.freq_nums)
+#         elif self.input_type == 'all':
+#             x = self.prompt.unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
+#
+#         # get prompting
+#         prompt = self.prompt_generator(x)
+#
+#         if self.mode == 'input':
+#             prompt = self.proj(prompt)
+#             return prompt
+#         elif self.mode == 'stack':
+#             prompts = []
+#             for i in range(self.depth):
+#                 proj = getattr(self, 'proj_{}'.format(str(i)))
+#                 prompts.append(proj(prompt))
+#             return prompts
+#         elif self.mode == 'hierarchical':
+#             prompts = []
+#             for i in range(self.depth):
+#                 proj_prompt = getattr(self, 'proj_prompt_{}'.format(str(i)))
+#                 prompt = proj_prompt(prompt)
+#                 prompts.append(self.proj_token(prompt))
+#             return prompts
+#
+#     def fft(self, x, rate):
+#         # the smaller rate, the smoother; the larger rate, the darker
+#         # rate = 4, 8, 16, 32
+#         mask = torch.zeros(x.shape).to(x.device)
+#         w, h = x.shape[-2:]
+#         line = int((w * h * rate) ** .5 // 2)
+#         mask[:, :, w//2-line:w//2+line, h//2-line:h//2+line] = 1
+#
+#         fft = torch.fft.fftshift(torch.fft.fft2(x, norm="forward"))
+#         # mask[fft.float() > self.freq_nums] = 1
+#         # high pass: 1-mask, low pass: mask
+#         fft = fft * (1 - mask)
+#         # fft = fft * mask
+#         fr = fft.real
+#         fi = fft.imag
+#
+#         fft_hires = torch.fft.ifftshift(torch.complex(fr, fi))
+#         inv = torch.fft.ifft2(fft_hires, norm="forward").real
+#
+#         inv = torch.abs(inv)
+#
+#         return inv
 
 class PromptGenerator(nn.Module):
     def __init__(self, scale_factor, prompt_type, embed_dim, tuning_stage, depth, input_type,
@@ -229,8 +388,11 @@ class PromptGenerator(nn.Module):
         self.handcrafted_tune = handcrafted_tune
         self.embedding_tune = embedding_tune
         self.adaptor = adaptor
-
-        self.shared_mlp = nn.Linear(self.embed_dim//self.scale_factor, self.embed_dim)
+        self.unshared_mlps=nn.ModuleList()
+        # self.shared_mlp = nn.Linear(self.embed_dim//self.scale_factor, self.embed_dim)
+        # self.saliency_detector = cv2.saliency.StaticSaliencySpectralResidual_create()
+        for i in range(self.depth):
+            self.unshared_mlps.append(nn.Linear(self.embed_dim//self.scale_factor, self.embed_dim))
         self.embedding_generator = nn.Linear(self.embed_dim, self.embed_dim//self.scale_factor)
         for i in range(self.depth):
             lightweight_mlp = nn.Sequential(
@@ -267,8 +429,17 @@ class PromptGenerator(nn.Module):
 
     def init_handcrafted(self, x):
         x = self.fft(x, self.freq_nums)
-        return self.prompt_generator(x)
 
+        return self.prompt_generator(x)
+    # def init_handcrafted_gt(self, gt_prompt):
+    #     # print(448,x.shape)
+    #     # x = self.fft(x, self.freq_nums)
+    #     # print(450,x.shape)
+    #
+    #     # print(442,x.shape)
+    #     # x= self.get_saliency_map(x)
+    #
+    #     return self.prompt_generator(gt_prompt)
     def get_prompt(self, handcrafted_feature, embedding_feature):
         N, C, H, W = handcrafted_feature.shape
         handcrafted_feature = handcrafted_feature.view(N, C, H*W).permute(0, 2, 1)
@@ -277,7 +448,11 @@ class PromptGenerator(nn.Module):
             lightweight_mlp = getattr(self, 'lightweight_mlp_{}'.format(str(i)))
             # prompt = proj_prompt(prompt)
             prompt = lightweight_mlp(handcrafted_feature + embedding_feature)
-            prompts.append(self.shared_mlp(prompt))
+            # print(prompt.shape,'prompt')
+            prompts.append(self.unshared_mlps[i](prompt))
+            # prompts.append(self.shared_mlp(prompt))
+            # print(self.shared_mlp(prompt).shape,'shared_mlp(prompt)')
+
         return prompts
 
     def forward(self, x):
@@ -336,7 +511,6 @@ class PromptGenerator(nn.Module):
         inv = torch.abs(inv)
 
         return inv
-
 class PatchEmbed2(nn.Module):
     """ Image to Patch Embedding
     """
@@ -357,13 +531,14 @@ class PatchEmbed2(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
-        assert H == self.img_size[0] and W == self.img_size[1], \
-            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        # assert H == self.img_size[0] and W == self.img_size[1], \
+        #     f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
         # x = F.interpolate(x, size=2*x.shape[-1], mode='bilinear', align_corners=True)
         x = self.proj(x)
         return x
-
+def swish(x):
+    return x * torch.sigmoid(x)
 
 class Block(nn.Module):
     """Transformer blocks with support of window attention and residual propagation blocks"""
@@ -412,6 +587,7 @@ class Block(nn.Module):
 
         self.window_size = window_size
 
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
@@ -426,6 +602,7 @@ class Block(nn.Module):
             x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
         x = shortcut + x
+        h =x
         x = x + self.mlp(self.norm2(x))
 
         return x

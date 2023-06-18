@@ -1,5 +1,7 @@
 import os
 import json
+import warnings
+
 from PIL import Image
 
 import pickle
@@ -15,7 +17,7 @@ from datasets import register
 @register('image-folder')
 class ImageFolder(Dataset):
     def __init__(self, path,  split_file=None, split_key=None, first_k=None, size=None,
-                 repeat=1, cache='none', mask=False):
+                 repeat=1, cache='none', mask=False,val=False):
         self.repeat = repeat
         self.cache = cache
         self.path = path
@@ -36,7 +38,16 @@ class ImageFolder(Dataset):
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
             ])
-
+        if val:
+            self.img_transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
+        else:
+            self.img_transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+            ])
         if split_file is None:
             filenames = sorted(os.listdir(path))
         else:

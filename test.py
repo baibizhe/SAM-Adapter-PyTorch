@@ -1,119 +1,107 @@
-import argparse
-import os
+import cv2
+from scipy import ndimage
 
-import yaml
+# import open_clip
+# import torch
+# import os
+# import torch
+# import unittest
+# import numpy as np
+# from PIL import Image as PilImage
+# from omnixai.data.text import Text
+# from omnixai.data.image import Image
+# from omnixai.data.multi_inputs import MultiInputs
+# from omnixai.preprocessing.image import Resize
+# from omnixai.explainers.vision_language.specific.gradcam import GradCAM
+#
+# model, preprocess_train, preprocess_val = open_clip.create_model_and_transforms('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
+# tokenizer = open_clip.get_tokenizer('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
+# x= torch.ones(size=(1,3,224,224))
+# # output = model(x,tokenizer('poly'))
+# # output2 = model(x,tokenizer('a image of poly'))
+# # output3 = model(x,tokenizer('an image of poly'))
+#
+# image = Resize(size=480).transform(
+#     Image(PilImage.open("/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/images/ckcu9ij2e00063b5yrrbb3f2o.jpg").convert("RGB")))
+# text = Text("an image of poly")
+# inputs = MultiInputs(image=image, text=text)
+# image_processor = model.visual
+# text_processor = model.text
+#
+# def preprocess(x: MultiInputs):
+#     images = torch.stack([image_processor(z.to_pil()) for z in x.image])
+#     texts = [text_processor(z) for z in x.text.values]
+#     return images, texts
+# explainer = GradCAM(
+#     model=model,
+#     # target_layer=model.text_encoder.base_model.base_model.encoder.layer[6].
+#     #     crossattention.self.attention_probs_layer,
+#     target_layer=model.text.transformer.encoder.layer[-1].attention.output.LayerNorm,
+#     preprocess_function=preprocess,
+#     tokenizer=tokenizer,
+#     loss_function=lambda outputs: outputs[:, 1].sum()
+# )
+# explanations = explainer.explain(inputs)
+# explanations.ipython_plot()
 import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+import matplotlib.pyplot as plt
+def fft( x, rate):
+    # the smaller rate, the smoother; the larger rate, the darker
+    # rate = 4, 8, 16, 32
+    mask = torch.zeros(x.shape).to(x.device)
+    w, h = x.shape[-2:]
+    line = int((w * h * rate) ** .5 // 2)
+    mask[:, w // 2 - line:w // 2 + line, h // 2 - line:h // 2 + line] = 1
 
-import datasets
-import models
-import utils
+    fft = torch.fft.fftshift(torch.fft.fft2(x, norm="forward"))
+    # mask[fft.float() > self.freq_nums] = 1
+    # high pass: 1-mask, low pass: mask
+    fft = fft * (1 - mask)
+    # fft = fft * mask
+    fr = fft.real
+    fi = fft.imag
 
-from torchvision import transforms
-from mmcv.runner import load_checkpoint
+    fft_hires = torch.fft.ifftshift(torch.complex(fr, fi))
+    inv = torch.fft.ifft2(fft_hires, norm="forward").real
 
+    inv = torch.abs(inv)
 
-def batched_predict(model, inp, coord, bsize):
-    with torch.no_grad():
-        model.gen_feat(inp)
-        n = coord.shape[1]
-        ql = 0
-        preds = []
-        while ql < n:
-            qr = min(ql + bsize, n)
-            pred = model.query_rgb(coord[:, ql: qr, :])
-            preds.append(pred)
-            ql = qr
-        pred = torch.cat(preds, dim=1)
-    return pred, preds
+    return inv
 
+img_path ='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/images/ckcud94xp000h3b5yael7l26v.jpg'
+# mask_path ='/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/data/Kvasir-SEG/masks/cju88v2f9oi8w0871hx9auh01.jpg'
+mask_path ='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/labels/ckcud94xp000h3b5yael7l26v.png'
 
-def tensor2PIL(tensor):
-    toPIL = transforms.ToPILImage()
-    return toPIL(tensor)
+image =cv2.imread(img_path)
+image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+image = torch.tensor(image)
+imagefft = fft(image,0.25)
+plt.figure(figsize=(30,30))
+plt.subplot(3,3,1)
+plt.axis('off')
+plt.imshow(image)
+plt.subplot(3,3,2)
+plt.axis('off')
+plt.imshow(imagefft[:,:,0])
+plt.subplot(3,3,3)
+plt.axis('off')
+plt.imshow(imagefft[:,:,1])
+plt.subplot(3,3,4)
+plt.imshow(imagefft[:,:,2])
+plt.axis('off')
+plt.subplot(3,3,5)
+plt.imshow(cv2.imread(mask_path))
+plt.subplot(3,3,6)
+plt.imshow(imagefft[:])
+plt.subplot(3,3,7)
+sobel_result = ndimage.sobel(image)
+plt.imshow(sobel_result[:,:,0])
+plt.subplot(3,3,8)
+plt.imshow(sobel_result[:,:,1])
+plt.subplot(3,3,9)
+plt.imshow(sobel_result[:,:,2])
+plt.axis('off')
+plt.tight_layout()
+plt.savefig('visualize_of_fft_kvsair_instrument.png')
+plt.show()
 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def eval_psnr(loader, model, data_norm=None, eval_type=None, eval_bsize=None,
-              verbose=False):
-    model.eval()
-    if data_norm is None:
-        data_norm = {
-            'inp': {'sub': [0], 'div': [1]},
-            'gt': {'sub': [0], 'div': [1]}
-        }
-
-    if eval_type == 'f1':
-        metric_fn = utils.calc_f1
-        metric1, metric2, metric3, metric4 = 'f1', 'auc', 'none', 'none'
-    elif eval_type == 'fmeasure':
-        metric_fn = utils.calc_fmeasure
-        metric1, metric2, metric3, metric4 = 'f_mea', 'mae', 'none', 'none'
-    elif eval_type == 'ber':
-        metric_fn = utils.calc_ber
-        metric1, metric2, metric3, metric4 = 'shadow', 'non_shadow', 'ber', 'none'
-    elif eval_type == 'cod':
-        metric_fn = utils.calc_cod
-        metric1, metric2, metric3, metric4 = 'sm', 'em', 'wfm', 'mae'
-
-    val_metric1 = utils.Averager()
-    val_metric2 = utils.Averager()
-    val_metric3 = utils.Averager()
-    val_metric4 = utils.Averager()
-
-    pbar = tqdm(loader, leave=False, desc='val')
-
-    for batch in pbar:
-        for k, v in batch.items():
-            batch[k] = v.cuda()
-
-        inp = batch['inp']
-
-        pred = torch.sigmoid(model.infer(inp))
-
-        result1, result2, result3, result4 = metric_fn(pred, batch['gt'])
-        val_metric1.add(result1.item(), inp.shape[0])
-        val_metric2.add(result2.item(), inp.shape[0])
-        val_metric3.add(result3.item(), inp.shape[0])
-        val_metric4.add(result4.item(), inp.shape[0])
-
-        if verbose:
-            pbar.set_description('val {} {:.4f}'.format(metric1, val_metric1.item()))
-            pbar.set_description('val {} {:.4f}'.format(metric2, val_metric2.item()))
-            pbar.set_description('val {} {:.4f}'.format(metric3, val_metric3.item()))
-            pbar.set_description('val {} {:.4f}'.format(metric4, val_metric4.item()))
-
-    return val_metric1.item(), val_metric2.item(), val_metric3.item(), val_metric4.item()
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config')
-    parser.add_argument('--model')
-    parser.add_argument('--prompt', default='none')
-    args = parser.parse_args()
-
-    with open(args.config, 'r') as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-    spec = config['test_dataset']
-    dataset = datasets.make(spec['dataset'])
-    dataset = datasets.make(spec['wrapper'], args={'dataset': dataset})
-    loader = DataLoader(dataset, batch_size=spec['batch_size'],
-                        num_workers=8)
-
-    model = models.make(config['model']).cuda()
-    sam_checkpoint = torch.load(args.model, map_location='cuda:0')
-    model.load_state_dict(sam_checkpoint, strict=True)
-    
-    metric1, metric2, metric3, metric4 = eval_psnr(loader, model,
-                                                   data_norm=config.get('data_norm'),
-                                                   eval_type=config.get('eval_type'),
-                                                   eval_bsize=config.get('eval_bsize'),
-                                                   verbose=True)
-    print('metric1: {:.4f}'.format(metric1))
-    print('metric2: {:.4f}'.format(metric2))
-    print('metric3: {:.4f}'.format(metric3))
-    print('metric4: {:.4f}'.format(metric4))

@@ -2,8 +2,8 @@ train_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/codDataset/train/img
-      root_path_2: /public2/home/chaotao/datasets/codDataset/train/gt
+      root_path_1:  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P10/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P10/labels
       cache: none
       split_key: train
   wrapper:
@@ -11,28 +11,28 @@ train_dataset:
     args:
       inp_size: 1024
       augment: false
-  batch_size: 2
+  batch_size: 1
 
 val_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/Imgs
-      root_path_2: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/GT
+      root_path_1:  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/labels
       cache: none
       split_key: test
   wrapper:
     name: val
     args:
       inp_size: 1024
-  batch_size: 2
+  batch_size: 1
 
 test_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/Imgs
-      root_path_2: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/GT
+      root_path_1: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold1/P20/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold1/P20/labels
       cache: none
       split_key: test
   wrapper:
@@ -42,7 +42,7 @@ test_dataset:
   batch_size: 1
 
 eval_type: cod
-sam_checkpoint: ./pretrained/sam_vit_b_01ec64.pth
+sam_checkpoint: /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/pretrained/sam_vit_b_01ec64.pth
 data_norm:
   inp:
     sub:
@@ -93,9 +93,10 @@ model:
 optimizer:
   name: adamw
   args:
-    lr: 0.0002
-lr_min: 1.0e-7
-epoch_max: 20
+    lr: 0.001
+    amsgrad: True
+lr_min: 0.0002
+epoch_max: 30
 
 multi_step_lr:
   milestones:

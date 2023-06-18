@@ -2,8 +2,8 @@ train_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/codDataset/train/img
-      root_path_2: /public2/home/chaotao/datasets/codDataset/train/gt
+      root_path_1: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P80/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P80/labels
       cache: none
       split_key: train
   wrapper:
@@ -17,8 +17,8 @@ val_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/Imgs
-      root_path_2: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/GT
+      root_path_1: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P20/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P20/labels
       cache: none
       split_key: test
   wrapper:
@@ -31,8 +31,8 @@ test_dataset:
   dataset:
     name: paired-image-folders
     args:
-      root_path_1: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/Imgs
-      root_path_2: /public2/home/chaotao/datasets/COD/TestDataset/COD10K/GT
+      root_path_1: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P20/imgs
+      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-seg/Kvasir-SEG/split2080/fold1/P20/labels
       cache: none
       split_key: test
   wrapper:

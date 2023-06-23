@@ -14,7 +14,7 @@ train_dataset:
   batch_size: 1
 
 
-val_dataset:
+val_dataset4:
   dataset:
     name: paired-image-folders
     args:
@@ -71,7 +71,7 @@ val_dataset3:
   batch_size: 1
 
 
-val_dataset4:
+val_dataset:
   dataset:
     name: paired-image-folders
     args:

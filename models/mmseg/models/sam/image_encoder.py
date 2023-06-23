@@ -148,39 +148,18 @@ class ImageEncoderViT(nn.Module):
             x = x + self.pos_embed
 
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
-        outs = []
+        # output_embeddings = []
 
         for i, blk in enumerate(self.blocks):
             # print(prompt[i].reshape(B, H, W, -1).shape,158)
             x = prompt[i].reshape(B, H, W, -1) + x
             x = blk(x)
-            if i in self.out_indices:
-                outs.append(x)
+            # if i in self.out_indices:
+                # output_embeddings.append(x.permute(0, 3, 1, 2))
         x = self.neck(x.permute(0, 3, 1, 2))
+        # output_embeddings.append(x)
+        # return x
         return x
-    # This is forwrd this gt
-    # def forward(self, x: torch.Tensor,gt:torch.Tensor) -> torch.Tensor:
-    #
-    #     inp = x
-    #     x = self.patch_embed(x)
-    #     embedding_feature = self.prompt_generator.init_embeddings(x)
-    #     handcrafted_feature = self.prompt_generator.init_handcrafted_gt(gt.repeat(1,3,1,1))
-    #
-    #     # handcrafted_feature = self.prompt_generator.prompt_generator(gt_prompt)
-    #     prompt = self.prompt_generator.get_prompt(handcrafted_feature, embedding_feature)
-    #     if self.pos_embed is not None:
-    #         x = x + self.pos_embed
-    #
-    #     B, H, W = x.shape[0], x.shape[1], x.shape[2]
-    #     outs = []
-    #
-    #     for i, blk in enumerate(self.blocks):
-    #         x = prompt[i].reshape(B, H, W, -1) + x
-    #         x = blk(x)
-    #         if i in self.out_indices:
-    #             outs.append(x)
-    #     x = self.neck(x.permute(0, 3, 1, 2))
-    #     return x
 
 def to_2tuple(x):
     if isinstance(x, container_abcs.Iterable):
@@ -428,7 +407,7 @@ class PromptGenerator(nn.Module):
         return self.embedding_generator(x)
 
     def init_handcrafted(self, x):
-        x = self.fft(x, self.freq_nums)
+        # x = self.fft(x, self.freq_nums)
 
         return self.prompt_generator(x)
     # def init_handcrafted_gt(self, gt_prompt):

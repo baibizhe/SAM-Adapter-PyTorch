@@ -5,7 +5,8 @@ import numpy as np
 import torch.utils.data
 import torchvision
 from PIL import Image
- 
+from PIL.Image import Resampling
+
 
 class USSegDataset(torch.utils.data.Dataset):
     '''
@@ -32,10 +33,10 @@ class USSegDataset(torch.utils.data.Dataset):
         # load images and masks
         img_path = os.path.join(self.root, "imgs", self.imgs[idx])
         mask_path = os.path.join(self.root, "labels", self.masks[idx])
-        img = Image.open(img_path).convert("RGB")
+        img = Image.open(img_path).convert("RGB").resize((1024,1024))
         # note that we haven't converted the mask to RGB,
         # because each color corresponds to a different instance with 0 being background
-        mask = Image.open(mask_path)
+        mask = Image.open(mask_path).resize((1024,1024),Resampling.NEAREST)
  
         mask = np.array(mask)
         mask=(mask>0)*255 # ensure 0,255

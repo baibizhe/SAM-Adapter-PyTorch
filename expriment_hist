@@ -180,13 +180,44 @@ epoch 60/100, train G: loss=0.1421, lr=0.00021, val CVC-300: dice=0.8609,  iou=0
 , val m_dice: =0.7998,
 
 6.18 SAM-L 50% training
-epoch 44/80, train G: loss=0.1613, lr=0.00024, val CVC-300: dice=0.8868,  iou=0.8264,
+, val Kvasir: dice=0.9058,  iou=0.8529,
 , val CVC-ClinicDB: dice=0.8746,  iou=0.8168,
 , val CVC-ColonDB: dice=0.7653,  iou=0.6923,
 , val ETIS-pDB: dice=0.7632,  iou=0.6964,
-, val Kvasir: dice=0.9058,  iou=0.8529,
+
+epoch 44/80, train G: loss=0.1613, lr=0.00024, val CVC-300: dice=0.8868,  iou=0.8264,
 , val m_iou: =0.7332,
 , val m_dice: =0.8000,
+
+
+6.19 SAM-L 20% traning
+epoch 50/80, train G: loss=0.1685, lr=0.00019,
+, val Kvasir: dice=0.8915,  iou=0.8321,
+, val CVC-ClinicDB: dice=0.8302,  iou=0.7734,
+, val CVC-ColonDB: dice=0.7330,  iou=0.6627,
+, val ETIS-pDB: dice=0.7251,  iou=0.6567,
+val CVC-300: dice=0.9063,  iou=0.8415,
+, val m_iou: =0.7045,
+, val m_dice: =0.7715,
+
+621 SAML kvsai-instru 2%
+F1 epoch 60/80, train G: loss=0.0597, lr=0.00005, val Kvasir: dice=0.8973,  iou=0.8494,
+, val m_iou: =0.8494,
+, val m_dice: =0.8973,
+F2
+epoch 69/80, train G: loss=0.0692, lr=0.00003, val Kvasir: dice=0.8951,  iou=0.8377,
+, val m_iou: =0.8377,
+, val m_dice: =0.8951,
+
+epoch 63/80, train G: loss=0.0665, lr=0.00004, val Kvasir: dice=0.9031,  iou=0.8546,
+, val m_iou: =0.8546,
+, val m_dice: =0.9031,
+
+
+epoch 78/80, train G: loss=0.0606, lr=0.00002, val Kvasir: dice=0.9054,  iou=0.8621,
+, val m_iou: =0.8621,
+, val m_dice: =0.9054,
+
 
 
 

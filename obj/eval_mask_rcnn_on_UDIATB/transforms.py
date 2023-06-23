@@ -1,7 +1,9 @@
 import random
 import torch
+import torchvision.transforms.functional
 
 from torchvision.transforms import functional as F
+from torchvision.transforms import InterpolationMode
 
 
 def _flip_coco_person_keypoints(kps, width):
@@ -22,7 +24,12 @@ class Compose(object):
         for t in self.transforms:
             image, target = t(image, target)
         return image, target
+class Resize(object):
 
+    def __call__(self, image, target):
+        image=torchvision.transforms.functional.resize(image,size=[1024,1024], interpolation=InterpolationMode.NEAREST)
+        target = torchvision.transforms.functional.resize(target,size=[1024,1024], interpolation=InterpolationMode.NEAREST)
+        return  image,target
 
 class RandomHorizontalFlip(object):
     def __init__(self, prob):

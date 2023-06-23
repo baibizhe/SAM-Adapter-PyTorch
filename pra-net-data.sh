@@ -9,7 +9,7 @@ for freqnums  in    0.25
       echo lr $lr   $fold $freqnums
       /home/ubuntu/anaconda3/envs/samEnv/bin/python /home/ubuntu/anaconda3/envs/samEnv/lib/python3.8/site-packages/torch/distributed/launch.py --nnodes 1 --nproc_per_node 1 \
       /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/train.py  \
-      --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-l-pra-net-data.yaml \
+      --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-b-pra-net-data.yaml \
       --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold$fold/P51/imgs \
       --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold$fold/P51/labels \
       --lr $lr \
@@ -18,6 +18,28 @@ for freqnums  in    0.25
     done
   done
 done
+
+
+#freqnums=0.25
+##pra-net   50%
+#for freqnums  in    0.25
+#  do
+#  for lr  in    0.0005
+#  do
+#    for fold  in  1
+#    do
+#      echo lr $lr   $fold $freqnums
+#      /home/ubuntu/anaconda3/envs/samEnv/bin/python /home/ubuntu/anaconda3/envs/samEnv/lib/python3.8/site-packages/torch/distributed/launch.py --nnodes 1 --nproc_per_node 1 \
+#      /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/train.py  \
+#      --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-l-pra-net-data.yaml \
+#      --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split2080/fold$fold/P20/imgs \
+#      --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split2080/fold$fold/P20/labels \
+#      --lr $lr \
+#      --freqnums $freqnums \
+#      --epoch_max 80 ;
+#    done
+#  done
+#done
 #done
 
 

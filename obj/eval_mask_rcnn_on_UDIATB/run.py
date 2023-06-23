@@ -5,8 +5,8 @@ import random
 import torch
 import argparse
 import torchvision
-from torchvision.models.detection import MaskRCNN
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection import MaskRCNN,FasterRCNN
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, fasterrcnn_resnet50_fpn
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from obj.eval_mask_rcnn_on_UDIATB import utils
@@ -14,22 +14,22 @@ from obj.eval_mask_rcnn_on_UDIATB import utils
 
 def get_instance_segmentation_model(num_classes, pretrained, state_dict):
     # load an instance segmentation model pre-trained on COCO/USCL
-    model = get_customized_model(num_classes, pretrained, state_dict)
-
-    # get the number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
-    # now get the number of input features for the mask classifier
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    hidden_layer = 256
-
-    # and replace the mask predictor with a new one
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
-                                                       hidden_layer,
-                                                       num_classes)
+    # model = get_customized_model(num_classes, pretrained, state_dict)
+    #
+    # # get the number of input features for the classifier
+    # in_features = model.roi_heads.box_predictor.cls_score.in_features
+    #
+    # # replace the pre-trained head with a new one
+    # model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    model= fasterrcnn_resnet50_fpn(pretrained=True)
+    # # now get the number of input features for the mask classifier
+    # in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    # hidden_layer = 256
+    #
+    # # and replace the mask predictor with a new one
+    # model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
+    #                                                    hidden_layer,
+    #                                                    num_classes)
     return model
 
 
@@ -66,10 +66,14 @@ def get_customized_model(num_classes, pretrained=False, state_dict=None):
                                                          output_size=14,
                                                          sampling_ratio=2)
     # put the pieces together inside a MaskRCNN model
-    model = MaskRCNN(backbone,
-                     num_classes=num_classes,
-                     box_roi_pool=roi_pooler,
-                     mask_roi_pool=mask_roi_pooler)
+    model = FasterRCNN(backbone,
+                       num_classes=num_classes,
+                       box_roi_pool=roi_pooler,
+                       )
+    # model = MaskRCNN(backbone,
+    #                  num_classes=num_classes,
+    #                  box_roi_pool=roi_pooler,
+    #                  mask_roi_pool=mask_roi_pooler)
     
     return model
 
@@ -142,6 +146,7 @@ def get_transform(train):
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
         # transforms.append(T.Normalize())
+    # transforms.append(T.Resize())
 
     return T.Compose(transforms)
 
@@ -150,7 +155,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='linear evaluation')
     parser.add_argument('-m', '--model', default='ResNet')
     parser.add_argument('-d', '--depth', type=int, default=18)
-    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split2080/fold1/P80', help='path of data')
+    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P51', help='path of data')
     parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
 
     parser.add_argument('-p', '--path', default='/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/eval_mask_rcnn_on_UDIATB/model_ckpt.zip', help='path of ckpt')
@@ -169,7 +174,7 @@ if __name__ == '__main__':
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=True, num_workers=0,
+        dataset, batch_size=1, shuffle=True, num_workers=0,
         collate_fn=utils.collate_fn)
 
     data_loader_test = torch.utils.data.DataLoader(
@@ -219,50 +224,49 @@ if __name__ == '__main__':
          
             # evaluate on the test dataset
             print('\nEvaluate epoch {}'.format(epoch))
-            evaluate(model, data_loader_test, device=device)
+            evaluate(model, data_loader_test, device=device,epoch=epoch)
             torch.save(model.state_dict(),os.path.join('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/output',f'e_{epoch}_obj.pth'))
 
         print('Training finish, the time consumption is {}s'.format(round(time.time()-start)))
 
     # put the model in evaluation mode
-    model.eval()
-    metric = SegmentationMetric(2) # classes = bg, lesion
-    with torch.no_grad():
-        for i, data in enumerate(data_loader_test):
-            images, targets = data
-            images = list(image.to(device) for image in images)
-            #print(targets)
-            targets = [np.array(t['masks']) for t in targets]
-            targets = np.array(targets)
-            targets = targets[0][0] > 0.5 # True/False
-
-            target_pred = model(images)  # (1,N,1,H,W), N is the num of detected tumors
-            target_pred = np.array([np.array(t['masks'].cpu()) for t in target_pred])
-            if target_pred.size == 0:  # no lesion detected, happens for tiny tumors
-                print('No tumor detected!')
-                target_pred = np.zeros_like(targets)
-            else:
-                target_pred = target_pred[0][0][0]
-            try:
-                target_pred = target_pred > 0.5 # True/False
-                metric.addBatch(target_pred.astype(int), targets.astype(int))
-            except:
-                print(target_pred)
-                print("skip a null prediction")
-            # mask_pred = Image.fromarray(target_pred)
-            # mask_pred.save("mask_pred{}.jpeg".format(i))
-            # mask_true = Image.fromarray(targets)
-            # mask_true.save("mask_true{}.jpeg".format(i))
-
-    TP = metric.confusionMatrix[1][1]
-    FP = metric.confusionMatrix[0][1]
-    FN = metric.confusionMatrix[1][0]
-    TN = metric.confusionMatrix[0][0]
-    print(metric.confusionMatrix)
-    print('Dice: {}'.format(round(2*TP / (FP+2*TP+FN), 4)))
-    print('PPV: {}'.format(round(TP / (FP+TP), 4)))
-    print('Sensitivity: {}'.format(round(TP / (FN+TP), 4)))
-
+    # model.eval()
+    # metric = SegmentationMetric(2) # classes = bg, lesion
+    # with torch.no_grad():
+    #     for i, data in enumerate(data_loader_test):
+    #         images, targets = data
+    #         images = list(image.to(device) for image in images)
+    #         #print(targets)
+    #         targets = [np.array(t['masks']) for t in targets]
+    #         targets = np.array(targets)
+    #         targets = targets[0][0] > 0.5 # True/False
+    #
+    #         target_pred = model(images)  # (1,N,1,H,W), N is the num of detected tumors
+    #         target_pred = np.array([np.array(t['masks'].cpu()) for t in target_pred])
+    #         if target_pred.size == 0:  # no lesion detected, happens for tiny tumors
+    #             print('No tumor detected!')
+    #             target_pred = np.zeros_like(targets)
+    #         else:
+    #             target_pred = target_pred[0][0][0]
+    #         try:
+    #             target_pred = target_pred > 0.5 # True/False
+    #             metric.addBatch(target_pred.astype(int), targets.astype(int))
+    #         except:
+    #             print(target_pred)
+    #             print("skip a null prediction")
+    #         # mask_pred = Image.fromarray(target_pred)
+    #         # mask_pred.save("mask_pred{}.jpeg".format(i))
+    #         # mask_true = Image.fromarray(targets)
+    #         # mask_true.save("mask_true{}.jpeg".format(i))
+    #
+    # TP = metric.confusionMatrix[1][1]
+    # FP = metric.confusionMatrix[0][1]
+    # FN = metric.confusionMatrix[1][0]
+    # TN = metric.confusionMatrix[0][0]
+    # print(metric.confusionMatrix)
+    # print('Dice: {}'.format(round(2*TP / (FP+2*TP+FN), 4)))
+    # print('PPV: {}'.format(round(TP / (FP+TP), 4)))
+    # print('Sensitivity: {}'.format(round(TP / (FN+TP), 4)))
     # mask_pred = Image.fromarray(target_pred)
     # mask_pred.save("mask_pred.jpeg")
     # mask_true = Image.fromarray(targets)

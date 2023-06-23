@@ -63,7 +63,7 @@ def make_data_loader(spec, tag=''):
 def make_data_loaders():
     train_loader = make_data_loader(config.get('train_dataset'), tag='train')
     val_loader = make_data_loader(config.get('val_dataset'), tag='val')
-    datasets_name = ['CVC-300','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','Kvasir']
+    datasets_name = ['Kvasir','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','CVC-300',]
     if config.get('val_dataset1'):
         val_loader1 = make_data_loader(config.get('val_dataset1'), tag='val')
         val_loader2 = make_data_loader(config.get('val_dataset2'), tag='val')
@@ -174,16 +174,14 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
             inp=batch['inp']
 
             with torch.autocast(device_type = 'cuda'):
-                pred = torch.sigmoid(model.infer(inp))
+                pred = torch.sigmoid(model.infer(inp,gt_original_cpu))
             total_num_samples += pred.shape[0]
 
             if pbar is not None:
                 pbar.update(1)
             if (desired_w != 1024) or (desired_h!=1024):
-
                 pred_desired = torch.nn.functional.interpolate(pred.cpu().float(),(desired_w,desired_h))
                 target_desized = torch.nn.functional.interpolate(gt_original_cpu.float(),(desired_w,desired_h))
-
             else:
                 pred_desired = pred.cpu().float()
                 target_desized = gt_original_cpu.float()
@@ -450,8 +448,8 @@ def main(config_, save_path, args):
 
 
 def get_custom_epoch(args):
-    if 'P10' in args.train_img_dir or 'P5' in args.train_img_dir:
-        print('10% traning')
+    if 'P10' in args.train_img_dir or 'P5' in args.train_img_dir or 'P2' in args.train_img_dir:
+        print('10/5/2% traning')
         start_eval_e = 20
         eval_per_epoch = 3
         epoch_max = 100

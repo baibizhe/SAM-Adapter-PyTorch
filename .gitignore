@@ -2,3 +2,4 @@
 /obj/output/
 /obj/output/*
 /configs/
+*.sh

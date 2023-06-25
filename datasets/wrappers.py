@@ -159,7 +159,6 @@ class ValDataset(Dataset):
 
         self.img_transform = transforms.Compose([
                 transforms.Resize((inp_size, inp_size)),
-
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -174,9 +173,17 @@ class ValDataset(Dataset):
 
     def __getitem__(self, idx):
         img, mask = self.dataset[idx]
+        mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(mask)
+        mask = np.array(mask)
+        if mask.max()!=1:
+            mask=np.where(mask==0,0,1)
+        mask = torch.tensor(mask).float()
+        if len(mask.shape) ==2:
+            mask= mask.unsqueeze(0)
+        img = self.img_transform(img)
         return {
-            'inp': self.img_transform(img),
-            'gt': self.mask_transform(mask),
+            'inp': img,
+            'gt': mask,
         }
 
 
@@ -196,14 +203,14 @@ class TrainDataset(Dataset):
         self.normalize = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])])
         self.img_transform = transforms.Compose([
-                transforms.Resize((self.inp_size, self.inp_size)),
                 transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
             ])
 
-        self.mask_transform = transforms.Compose([
-                transforms.Resize((self.inp_size, self.inp_size)),
-                transforms.ToTensor(),
-            ])
+        # self.mask_transform = transforms.Compose([
+        #         transforms.ToTensor(),
+        #     ])
 
     def __len__(self):
         return len(self.dataset)
@@ -221,33 +228,39 @@ class TrainDataset(Dataset):
             if random.random() < 0.5:
                 img = img.transpose(Image.FLIP_TOP_BOTTOM)
                 mask = mask.transpose(Image.FLIP_TOP_BOTTOM)
-
-
         img = transforms.Resize((self.inp_size, self.inp_size))(img)
         mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(mask)
-        inp = self.normalize(self.img_transform(img))
-        gt = self.img_transform(mask)
-        img = np.array(img)
+        img= np.array(img)
         mask = np.array(mask)
-        # print(mask.sum())
+        if mask.max()!=1:
+            mask=np.where(mask==0,0,1)
+        img = self.img_transform(img)
+        mask = torch.tensor(mask).float()
+        if len(mask.shape) ==2:
+            mask= mask.unsqueeze(0)
 
-        if mask.sum()==0:
-            roi_input =inp
-            roi_mask = gt
-            x1, y1, x2, y2 = gt.shape
-            roi_size = gt.shape
-        else:
-            x1, y1, x2, y2 = masks_to_boxes(torch.tensor(np.array(mask)).unsqueeze(0))[0]
-            x1, y1, x2, y2 =x1.int().item(), y1.int().item(), x2.int().item(), y2.int().item()
-            # print(x1, y1, x2, y2)
-            # roi_input = inp[:,x1:x2,y1:y2]
-            # roi_mask = gt[:,x1:x2,y1:y2]
-            roi_input = inp[:,y1:y2,x1:x2]
-            roi_mask = gt[:,y1:y2,x1:x2]
-            roi_size = roi_mask.shape
-            roi_input = transforms.Resize((self.inp_size, self.inp_size))(roi_input)
-            roi_mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(roi_mask)
-        # import matplotlib.pyplot as plt
+        # print(mask.min(),mask.max(),'line4')
+        # img = np.array(img)
+        # mask = np.array(mask)
+        # print(mask.sum())
+        #
+        # if mask.sum()==0:
+        #     roi_input =inp
+        #     roi_mask = gt
+        #     x1, y1, x2, y2 = gt.shape
+        #     roi_size = gt.shape
+        # else:
+        #     x1, y1, x2, y2 = masks_to_boxes(torch.tensor(np.array(mask)).unsqueeze(0))[0]
+        #     x1, y1, x2, y2 =x1.int().item(), y1.int().item(), x2.int().item(), y2.int().item()
+        #     # print(x1, y1, x2, y2)
+        #     # roi_input = inp[:,x1:x2,y1:y2]
+        #     # roi_mask = gt[:,x1:x2,y1:y2]
+        #     roi_input = inp[:,y1:y2,x1:x2]
+        #     roi_mask = gt[:,y1:y2,x1:x2]
+        #     roi_size = roi_mask.shape
+        #     roi_input = transforms.Resize((self.inp_size, self.inp_size))(roi_input)
+        #     roi_mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(roi_mask)
+        # # import matplotlib.pyplot as plt
         # plt.imshow(inp.permute(1, 2, 0).numpy())
         # plt.show()
         # plt.imshow(gt.permute(1, 2, 0).numpy())
@@ -260,5 +273,8 @@ class TrainDataset(Dataset):
         # plt.show()
         # plt.imshow(roi_mask.permute(1, 2, 0))
         # plt.show()
+        # print(img.mean(),img.max(),img.min())
 
-        return {'inp':inp,'gt':gt,'roi_input':roi_input,'roi_mask':roi_mask,'roi_box':torch.tensor([x1, y1, x2, y2]),'roi_size':torch.tensor(roi_size)}
+        return {'inp':img,'gt':mask}
+
+        # return {'inp':inp,'gt':gt,'roi_input':roi_input,'roi_mask':roi_mask,'roi_box':torch.tensor([x1, y1, x2, y2]),'roi_size':torch.tensor(roi_size)}

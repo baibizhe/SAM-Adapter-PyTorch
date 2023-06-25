@@ -62,15 +62,21 @@ def make_data_loader(spec, tag=''):
 
 def make_data_loaders():
     train_loader = make_data_loader(config.get('train_dataset'), tag='train')
-    val_loader = make_data_loader(config.get('val_dataset'), tag='val')
-    datasets_name = ['Kvasir','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','CVC-300',]
-    if config.get('val_dataset1'):
-        val_loader1 = make_data_loader(config.get('val_dataset1'), tag='val')
-        val_loader2 = make_data_loader(config.get('val_dataset2'), tag='val')
-        val_loader3 = make_data_loader(config.get('val_dataset3'), tag='val')
-        val_loader4 = make_data_loader(config.get('val_dataset4'), tag='val')
-        return  train_loader, [val_loader,val_loader1,val_loader2,val_loader3,val_loader4] ,datasets_name
-    return train_loader, [val_loader],['Kvasir']
+    val_data_num = config['val_datasets']['val_datasets_num']
+    val_data_names = config['val_datasets']['val_datasets_name']
+    print('val_data_num',val_data_num,'val_data_names',val_data_names)
+    val_loaders = []
+    for i in range(1,val_data_num+1):
+        val_loaders.append(make_data_loader(config['val_datasets'][f'val_dataset{i}'], tag='val'))
+    # val_loader = make_data_loader(config.get('val_dataset'), tag='val')
+    # datasets_name = ['Kvasir','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','CVC-300',]
+    # if config.get('val_dataset1'):
+    #     val_loader1 = make_data_loader(config.get('val_dataset1'), tag='val')
+    #     val_loader2 = make_data_loader(config.get('val_dataset2'), tag='val')
+    #     val_loader3 = make_data_loader(config.get('val_dataset3'), tag='val')
+    #     val_loader4 = make_data_loader(config.get('val_dataset4'), tag='val')
+    #     return  train_loader, [val_loader,val_loader1,val_loader2,val_loader3,val_loader4] ,datasets_name
+    return train_loader, val_loaders,val_data_names
 
 #
 # def eval_psnr(loader, model, eval_type=None):
@@ -166,7 +172,6 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
         for idx,batch in enumerate(loader):
             inp_original_cpu = batch['inp']
             gt_original_cpu = batch['gt']
-            # original_shape = batch['original_shape'][::-1]
             for k, v in batch.items():
                 if 'shape' in k :
                     continue
@@ -176,6 +181,7 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
             with torch.autocast(device_type = 'cuda'):
                 pred = torch.sigmoid(model.infer(inp,gt_original_cpu))
             total_num_samples += pred.shape[0]
+            # print(pred.min(),pred.max(),gt_original_cpu.min(),gt_original_cpu.max())
 
             if pbar is not None:
                 pbar.update(1)
@@ -266,7 +272,7 @@ def train(train_loader, model):
         loss_list.extend(batch_loss)
         if pbar is not None:
             pbar.update(1)
-
+        # break
     if pbar is not None:
         pbar.close()
 
@@ -288,7 +294,7 @@ def main(config_, save_path, args):
             'inp': {'sub': [0], 'div': [1]},
             'gt': {'sub': [0], 'div': [1]}
         }
-    epoch_max, eval_per_epoch, start_eval_e = get_custom_epoch(args)
+    epoch_max, eval_per_epoch, start_eval_e = get_custom_epoch(len(train_loader.dataset))
 
     model, optimizer, epoch_start = prepare_training()
     model.optimizer = optimizer
@@ -447,30 +453,19 @@ def main(config_, save_path, args):
         writer.flush()
 
 
-def get_custom_epoch(args):
-    if 'P10' in args.train_img_dir or 'P5' in args.train_img_dir or 'P2' in args.train_img_dir:
-        print('10/5/2% traning')
+def get_custom_epoch(len_of_tranin_data):
+    if len_of_tranin_data < 200:
         start_eval_e = 20
         eval_per_epoch = 3
         epoch_max = 100
-    if 'P20' in args.train_img_dir:
-        print('20% traning')
+    if 200<=len_of_tranin_data <= 1000:
         start_eval_e = 15
         eval_per_epoch = 2
         epoch_max = 60
-    if 'P80' in args.train_img_dir:
-        print('80% traning')
+    if 1000<=len_of_tranin_data:
         start_eval_e = 5
         eval_per_epoch = 1
         epoch_max = 40
-    if 'P51' in args.train_img_dir or 'P49' in args.train_img_dir:
-        print('50% traning')
-        start_eval_e = 10
-        eval_per_epoch = 1
-        epoch_max = 40
-    # raise Exception('assert P5 P10 P20 P50 P80 traning ')
-    if args.epoch_max:
-        epoch_max = args.epoch_max
     return epoch_max, eval_per_epoch, start_eval_e
 
 
@@ -523,8 +518,8 @@ if __name__ == '__main__':
         config['train_dataset']['dataset']['args']['root_path_1'] = args.train_img_dir
         config['train_dataset']['dataset']['args']['root_path_2'] = args.train_label_dir
     if args.val_img_dir:
-        config['val_dataset']['dataset']['args']['root_path_1'] = args.val_img_dir
-        config['val_dataset']['dataset']['args']['root_path_2'] = args.val_label_dir
+        config['val_datasets']['val_dataset1']['dataset']['args']['root_path_1'] = args.val_img_dir
+        config['val_datasets']['val_dataset1']['dataset']['args']['root_path_2'] = args.val_label_dir
     config['epoch_max'] = args.epoch_max
     print(args)
 

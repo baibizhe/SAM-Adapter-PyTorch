@@ -150,6 +150,9 @@ def evaluate(model, data_loader, device,epoch):
             scores_list= res[list(res.keys())[0]]['scores']
             image_with_boxes = draw_boxes(targets[0]['masks'].cpu().numpy().copy()*255 , detection_results,
                                           scores_list)
+            if image_with_boxes.shape[0]==1:
+                image_with_boxes = np.repeat(np.expand_dims(image_with_boxes[0],2),3,2)
+            # print(image_with_boxes.shape)
             processed_images.append(image_with_boxes)
         else:
             if not plot_flat:

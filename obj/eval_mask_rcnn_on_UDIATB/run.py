@@ -155,8 +155,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='linear evaluation')
     parser.add_argument('-m', '--model', default='ResNet')
     parser.add_argument('-d', '--depth', type=int, default=18)
-    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P51', help='path of data')
-    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
+    # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P51', help='path of data')
+    # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
+    # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split5-95/fold1/P5', help='path of data')
+    # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split5-95/fold1/P95', help='path of data')
+    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/traning/split2080/fold1/P20', help='path of data')
+    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/test/Stage_3', help='path of data')
 
     parser.add_argument('-p', '--path', default='/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/eval_mask_rcnn_on_UDIATB/model_ckpt.zip', help='path of ckpt')
     parser.add_argument('-s', '--seed', type=int, default=1)
@@ -167,18 +171,18 @@ if __name__ == '__main__':
     dataset_dir = args.dataset_dir
     print('data dir is:', dataset_dir)
     dataset = USSegDataset(dataset_dir, get_transform(train=True))
-    dataset_test = USSegDataset(args.test_dataset_dir, get_transform(train=False),test=True)
+    dataset_test = USSegDataset(args.test_dataset_dir, get_transform(train=False),test=True,num_of_data=200)
 
     # split the dataset in train and test set
     set_seed(args.seed)
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=1, shuffle=True, num_workers=0,
+        dataset, batch_size=1, shuffle=True, num_workers=4,
         collate_fn=utils.collate_fn)
 
     data_loader_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=1, shuffle=False, num_workers=0,
+        dataset_test, batch_size=1, shuffle=False, num_workers=4,
         collate_fn=utils.collate_fn)
 
     ###################################### fine-tune the model #########################################

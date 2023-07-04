@@ -168,9 +168,9 @@ epoch 100/100, train G: loss=0.6812, lr=0.00005, val CVC-300: dice=0.3696,  iou=
 , val m_iou: =0.3161,
 , val m_dice: =0.4151,
 
+
+
 6.18 SAM-L 80% traning
-
-
 epoch 60/100, train G: loss=0.1421, lr=0.00021, val CVC-300: dice=0.8609,  iou=0.7962,
 , val CVC-ClinicDB: dice=0.9084,  iou=0.8562,
 , val CVC-ColonDB: dice=0.7754,  iou=0.6998,
@@ -217,6 +217,130 @@ epoch 63/80, train G: loss=0.0665, lr=0.00004, val Kvasir: dice=0.9031,  iou=0.8
 epoch 78/80, train G: loss=0.0606, lr=0.00002, val Kvasir: dice=0.9054,  iou=0.8621,
 , val m_iou: =0.8621,
 , val m_dice: =0.9054,
+
+6.22  SAM-B 50% training with box
+map=  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.471
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.687
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.563
+epoch 40/80, train G: loss=0.1738, lr=0.00027, val Kvasir: dice=0.8721,  iou=0.8125,
+, val CVC-ClinicDB: dice=0.8384,  iou=0.7754,
+, val CVC-ColonDB: dice=0.7121,  iou=0.6377,
+, val ETIS-pDB: dice=0.6219,  iou=0.5584,
+, val CVC-300: dice=0.8503,  iou=0.7844,
+, val m_iou: =0.6618,
+, val m_dice: =0.7302,
+
+6.22  SAM-B 50% training wo box
+epoch 32/80, train G: loss=0.2020, lr=0.00034, val Kvasir: dice=0.8602,  iou=0.7995,
+, val CVC-ClinicDB: dice=0.8050,  iou=0.7364,
+, val CVC-ColonDB: dice=0.6573,  iou=0.5834,
+, val ETIS-pDB: dice=0.6076,  iou=0.5348,
+, val CVC-300: dice=0.8240,  iou=0.7499,
+, val m_iou: =0.6230,
+, val m_dice: =0.6945,
+, 5.6m 2.6h/6.6h
+epoch 33/80, train G: loss=0.2082, lr=0.00034, val Kvasir: dice=0.8668,  iou=0.8052,
+, val CVC-ClinicDB: dice=0.8544,  iou=0.7877,
+, val CVC-ColonDB: dice=0.6867,  iou=0.6099,
+, val ETIS-pDB: dice=0.6434,  iou=0.5720,
+, val CVC-300: dice=0.8275,  iou=0.7648,
+, val m_iou: =0.6505,
+, val m_dice: =0.7223,
+
+
+
+
+
+6.22 mid night running  SAM-B 50% training with gt box ,infer with detected box
+epoch 80/80, train G: loss=0.1117, lr=0.00005, val Kvasir: dice=0.8706,  iou=0.8093,
+, val CVC-ClinicDB: dice=0.8599,  iou=0.8075,
+, val CVC-ColonDB: dice=0.7000,  iou=0.6298,
+, val ETIS-pDB: dice=0.5732,  iou=0.5102,
+, val CVC-300: dice=0.8382,  iou=0.7768,
+, val m_iou: =0.6478,
+, val m_dice: =0.7130,
+, 5.1m 6.5h/6.5h
+
+
+
+6.24 endovis sam-b 20%
+epoch 80/80, train G: loss=0.1651, lr=0.00005, val stage1: dice=0.8849,  iou=0.8198,
+, val stage2: dice=0.8569,  iou=0.7924,
+, val stage3: dice=0.8414,  iou=0.7697,
+, val m_iou: =0.7816,
+, val m_dice: =0.8511,
+, 10.0m 8.5h/8.5h
+
+
+
+6.24 endovis sam-b 50%
+epoch 35/40, train G: loss=0.1906, lr=0.00007, val stage1: dice=0.9032,  iou=0.8423,
+, val stage2: dice=0.8734,  iou=0.8104,
+, val stage3: dice=0.8737,  iou=0.8062,
+, val m_iou: =0.8131,
+, val m_dice: =0.8788,
+, 16.8m 8.8h/10.1h
+
+
+
+6.25 w/o obj
+ epoch 36/80, train G: loss=0.1821, lr=0.00031, val Kvasir: dice=0.8826,  iou=0.8205,
+, val CVC-ClinicDB: dice=0.8792,  iou=0.8204,
+, val CVC-ColonDB: dice=0.7642,  iou=0.6878,
+, val ETIS-pDB: dice=0.7256,  iou=0.6500,
+, val CVC-300: dice=0.9105,  iou=0.8567,
+, val m_iou: =0.7200,
+, val m_dice: =0.7909,
+, 8.7m 4.9h/10.9h
+
+
+with obj
+epoch 57/60, train G: loss=0.1274, lr=0.00003, val Kvasir: dice=0.9019,  iou=0.8490,
+, val ClinicDB: dice=0.9004,  iou=0.8476,
+, val ColonDB: dice=0.7569,  iou=0.6860,
+, val ETIS: dice=0.6675,  iou=0.6041,
+, val CVC300: dice=0.8730,  iou=0.8105,
+, val m_iou: =0.7082,
+, val m_dice: =0.7730,
+, 9.2m 8.7h/9.2h
+
+6.29 kvsair wo obj 20% e80
+F3 , val m_iou: =0.8314,
+, val m_dice: =0.8932,
+
+F5 epoch 58/60, train G: loss=0.1432, lr=0.00005, val kvasir: dice=0.8890,  iou=0.8263,
+, val m_iou: =0.8263,
+, val m_dice: =0.8890,
+
+10%  e100
+F3 epoch 87/100, train G: loss=0.1264, lr=0.00007, val kvasir: dice=0.8828,  iou=0.8158,
+, val m_iou: =0.8158,
+, val m_dice: =0.8828,
+
+F5
+epoch 84/100, train G: loss=0.1320, lr=0.00008, val kvasir: dice=0.8796,  iou=0.8127,
+, val m_iou: =0.8127,
+, val m_dice: =0.8796,
+
+7.2 wo obj 50% 352/1024 almost same val 200
+epoch 58/60, train G: loss=0.1452, lr=0.00005, val kvasir: dice=0.8852,  iou=0.8170,
+, val m_iou: =0.8170,
+, val m_dice: =0.8852,
+, 3.5m 3.4h/3.5h
+
+wo obj 10% 352/1024 almost same  val 200
+epoch 91/100, train G: loss=0.1106, lr=0.00006, val kvasir: dice=0.8915,  iou=0.8296,
+, val m_iou: =0.8296,
+, val m_dice: =0.8915,
+, 1.2m 1.8h/1.9h
+
+
+
+
+
+
+
+
 
 
 

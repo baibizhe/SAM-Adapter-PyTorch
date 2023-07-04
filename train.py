@@ -53,10 +53,13 @@ def make_data_loader(spec, tag=''):
             if 'shape' in k:
                 continue
             log('  {}: shape={}'.format(k, tuple(v.shape)))
-
+    # if tag != 'train':
+    #     warnings.warn(
+    #         'this design is spefic for kvasir .which original design might end up with some val images contains in traning imges')
+    #     dataset = torch.utils.data.Subset(dataset.dataset, list(range(0, 200)))
     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     loader = DataLoader(dataset, batch_size=spec['batch_size'],
-        shuffle=False, num_workers=8, pin_memory=True, sampler=sampler)
+        shuffle=False, num_workers=4, pin_memory=True, sampler=sampler)
     return loader
 
 
@@ -67,7 +70,10 @@ def make_data_loaders():
     print('val_data_num',val_data_num,'val_data_names',val_data_names)
     val_loaders = []
     for i in range(1,val_data_num+1):
-        val_loaders.append(make_data_loader(config['val_datasets'][f'val_dataset{i}'], tag='val'))
+        val_loader = make_data_loader(config['val_datasets'][f'val_dataset{i}'], tag='val')
+        # temp_val_dataset = torch.utils.data.Subset(val_loader.dataset,list(range(0,200)))
+        # val_loader.dataset = temp_val_dataset
+        val_loaders.append(val_loader)
     # val_loader = make_data_loader(config.get('val_dataset'), tag='val')
     # datasets_name = ['Kvasir','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','CVC-300',]
     # if config.get('val_dataset1'):
@@ -150,7 +156,7 @@ def compute_dice_coefficient(mask_gt, mask_pred):
 
     return 2 * volume_intersect / volume_sum
 
-def eval_segment(loader, model, args,writer=None,epcoh=0):
+def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
     model.eval()
 
     metric1 = 'dice'
@@ -168,8 +174,12 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
     jaccard_score = 0
     desired_w = args.val_img_w
     desired_h = args.val_img_h
+    count  = 0
+    warnings.warn(
+        'this design is spefic for kvasir .which original design might end up with some val images contains in traning imges')
     with torch.no_grad():
         for idx,batch in enumerate(loader):
+            count+=1
             inp_original_cpu = batch['inp']
             gt_original_cpu = batch['gt']
             for k, v in batch.items():
@@ -179,7 +189,7 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
             inp=batch['inp']
 
             with torch.autocast(device_type = 'cuda'):
-                pred = torch.sigmoid(model.infer(inp,gt_original_cpu))
+                pred = torch.sigmoid(model.infer(inp,temperature))
             total_num_samples += pred.shape[0]
             # print(pred.min(),pred.max(),gt_original_cpu.min(),gt_original_cpu.max())
 
@@ -207,7 +217,8 @@ def eval_segment(loader, model, args,writer=None,epcoh=0):
                                   global_step=epcoh)
                 writer.add_images(tag=f"images/{idx}/valid_label_images", img_tensor=batch['gt'].cpu().numpy(),
                                   global_step=epcoh)
-
+            if count >200:
+                break
     if pbar is not None:
         pbar.close()
 
@@ -249,7 +260,7 @@ def prepare_training_adapter():
     return model, optimizer, epoch_start
 
 
-def train(train_loader, model):
+def train(train_loader, model,temperature):
     model.train()
     if local_rank == 0:
         pbar = tqdm(total=len(train_loader), leave=False, desc='train')
@@ -266,7 +277,7 @@ def train(train_loader, model):
         # print(inp.shape,gt.shape)
 
         model.set_input(inp, gt)
-        model.optimize_parameters()
+        model.optimize_parameters(temperature)
         batch_loss = [torch.zeros_like(model.loss_G) for _ in range(dist.get_world_size())]
         dist.all_gather(batch_loss, model.loss_G)
         loss_list.extend(batch_loss)
@@ -295,7 +306,8 @@ def main(config_, save_path, args):
             'gt': {'sub': [0], 'div': [1]}
         }
     epoch_max, eval_per_epoch, start_eval_e = get_custom_epoch(len(train_loader.dataset))
-
+    if config['epoch_max']:
+        epoch_max = config['epoch_max']
     model, optimizer, epoch_start = prepare_training()
     model.optimizer = optimizer
     # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -375,17 +387,19 @@ def main(config_, save_path, args):
     # model =  torch.compile(model,mode='max-autotune')
 
     epoch_val = config.get('epoch_val')
-    max_val_v = -1e18 if config['eval_type'] != 'ber' else 1e8
     timer = utils.Timer()
     early_stop_e = 0
     early_stop_e_max = 50
     best_dice =0
     assert len(val_loaders) == len(val_datasets_name),'assert len(val_loaders) == len(val_datasets_name)'
-
+    temperature =1
+    #sinx is ok
     for epoch in range(epoch_start, epoch_max + 1):
+        # temperature = 1-epoch/epoch_max
+        print("cur temp",temperature)
         train_loader.sampler.set_epoch(epoch)
         t_epoch_start = timer.t()
-        train_loss_G = train(train_loader, model)
+        train_loss_G = train(train_loader, model,temperature)
         # train_loss_G = 0
 
         lr_scheduler.step()
@@ -395,24 +409,21 @@ def main(config_, save_path, args):
             writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
             log_info.append('train G: loss={:.4f}'.format(train_loss_G))
             log_info.append('lr={:.5f}'.format(optimizer.param_groups[0]['lr']))
-
             writer.add_scalar('train_loss',  train_loss_G, epoch)
-
             model_spec = config['model']
             model_spec['sd'] = model.state_dict()
             optimizer_spec = config['optimizer']
             optimizer_spec['sd'] = optimizer.state_dict()
-
             save(config, model, save_path, 'last')
         epoch_m_dice = 0
         epoch_m_iou = 0
         total_samples = 0
-        if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        # if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
+        # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
+        if (epoch_val is not None) and (epoch >= 5 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
-                    )
+                    temperature=temperature)
                 d_name = val_datasets_name[val_loader_idx]
                 epoch_m_dice+=dice_cur*len(val_loaders[val_loader_idx].dataset)
                 epoch_m_iou+=iou_cur*len(val_loaders[val_loader_idx].dataset)

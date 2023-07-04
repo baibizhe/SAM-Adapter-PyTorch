@@ -15,30 +15,48 @@ class USSegDataset(torch.utils.data.Dataset):
         GT: masks for each image，png file，bg: 0, lesion: 255
         original: data images，png
     '''
-    def __init__(self, root, transforms=None,test=False):
+    def __init__(self, root, transforms=None,test=False,num_of_data=200):
         self.root = root
         self.transforms = transforms
         # load all image files, sorting them to ensure that they are aligned
         self.imgs = list(sorted(os.listdir(os.path.join(root, "imgs"))))
         self.imgs = list(filter(lambda x: x.endswith('.jpg') or x.endswith('.png'), self.imgs))
-        self.masks = list(sorted(os.listdir(os.path.join(root, "labels"))))
-        self.masks = list(filter(lambda x: x.endswith('.jpg') or x.endswith('.png'), self.masks))
         if test:
-            self.imgs = glob.glob('/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TestDataset/*/images/*')
-            self.masks = glob.glob('/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TestDataset/*/masks/*')
-            self.imgs = sorted(self.imgs)
-            self.masks = sorted(self.masks)
+            self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
+            self.masks = list(map(lambda x:os.path.join(root,'masks',x),self.masks ))
+            # self.masks = list(sorted(os.listdir(os.path.join(root, "labels"))))
+            # self.masks = list(map(lambda x:os.path.join(root,'labels',x),self.masks ))
+
+        else:
+             self.masks = list(sorted(os.listdir(os.path.join(root, "labels"))))
+             self.masks = list(map(lambda x:os.path.join(root,'labels',x),self.masks ))
+
+        self.masks = list(filter(lambda x: x.endswith('.jpg') or x.endswith('.png'), self.masks))
+        if num_of_data:
+            self.imgs = self.imgs[0:num_of_data]
+            self.masks = self.masks[0:num_of_data]
+        self.imgs = list(map(lambda x:os.path.join(root,'imgs',x),self.imgs ))
+
+        # if test:
+        #     self.imgs = glob.glob('/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TestDataset/*/images/*')
+        #     self.masks = glob.glob('/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TestDataset/*/masks/*')
+        #     self.imgs = sorted(self.imgs)
+        #     self.masks = sorted(self.masks)
 
     def __getitem__(self, idx):
         # load images and masks
-        img_path = os.path.join(self.root, "imgs", self.imgs[idx])
-        mask_path = os.path.join(self.root, "labels", self.masks[idx])
+        # img_path = os.path.join(self.root, "imgs", self.imgs[idx])
+        # mask_path = os.path.join(self.root, "labels", self.masks[idx])
+        img_path =  self.imgs[idx]
+        mask_path =  self.masks[idx]
         img = Image.open(img_path).convert("RGB").resize((1024,1024))
         # note that we haven't converted the mask to RGB,
         # because each color corresponds to a different instance with 0 being background
         mask = Image.open(mask_path).resize((1024,1024),Resampling.NEAREST)
  
         mask = np.array(mask)
+        if mask.max()!=1:
+            mask=np.where(mask==0,0,1)
         mask=(mask>0)*255 # ensure 0,255
         # instances are encoded as different colors
         obj_ids = np.unique(mask)

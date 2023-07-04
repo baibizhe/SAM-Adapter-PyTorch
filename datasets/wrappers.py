@@ -202,8 +202,13 @@ class TrainDataset(Dataset):
         self.inp_size = inp_size
         self.normalize = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])])
+        warnings.warn('using more augmentation')
         self.img_transform = transforms.Compose([
                 transforms.ToTensor(),
+                transforms.GaussianBlur((75, 75), sigma=(0.001, 2.0)),
+                transforms.ColorJitter(
+                    brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01
+                ),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
             ])

@@ -136,7 +136,7 @@ class ImageEncoderViT(nn.Module):
         self.num_stages = self.depth
         self.out_indices = tuple(range(self.num_stages))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor,temperature =1 ) -> torch.Tensor:
         inp = x
         x = self.patch_embed(x)
         embedding_feature = self.prompt_generator.init_embeddings(x)  #simple embedding_generator(x)
@@ -148,11 +148,9 @@ class ImageEncoderViT(nn.Module):
             x = x + self.pos_embed
 
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
-        # output_embeddings = []
-
         for i, blk in enumerate(self.blocks):
             # print(prompt[i].reshape(B, H, W, -1).shape,158)
-            x = prompt[i].reshape(B, H, W, -1) + x
+            x = prompt[i].reshape(B, H, W, -1)*temperature + x
             x = blk(x)
             # if i in self.out_indices:
                 # output_embeddings.append(x.permute(0, 3, 1, 2))

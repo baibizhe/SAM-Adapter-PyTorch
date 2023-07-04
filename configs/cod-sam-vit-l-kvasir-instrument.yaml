@@ -12,20 +12,22 @@ train_dataset:
       inp_size: 1024
       augment: false
   batch_size: 1
-
-val_dataset:
-  dataset:
-    name: paired-image-folders
-    args:
-      root_path_1:  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/imgs
-      root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/labels
-      cache: none
-      split_key: test
-  wrapper:
-    name: val
-    args:
-      inp_size: 1024
-  batch_size: 1
+val_datasets:
+  val_datasets_num: 1
+  val_datasets_name: ['kvasir']
+  val_dataset1:
+    dataset:
+      name: paired-image-folders
+      args:
+        root_path_1:  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/imgs
+        root_path_2: /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold1/P90/labels
+        cache: none
+        split_key: test
+    wrapper:
+      name: val
+      args:
+        inp_size: 1024
+    batch_size: 1
 
 test_dataset:
   dataset:

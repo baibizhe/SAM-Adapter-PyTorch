@@ -116,7 +116,71 @@ def inverse_normalize(tensor: torch.Tensor, mean=[0.485, 0.456, 0.406], std=[0.2
     std = torch.tensor(std).view(3, 1, 1).cuda()
     return tensor * std + mean
 
+@register('sam_clip_seg')
+class SAM(nn.Module):
+    def __init__(self, inp_size=None, encoder_mode=None, loss=None):
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.embed_dim = encoder_mode['embed_dim']
+        self.image_encoder = ImageEncoderViT(
+            img_size=inp_size,
+            patch_size=encoder_mode['patch_size'],
+            in_chans=3,
+            embed_dim=encoder_mode['embed_dim'],
+            depth=encoder_mode['depth'],
+            num_heads=encoder_mode['num_heads'],
+            mlp_ratio=encoder_mode['mlp_ratio'],
+            out_chans=encoder_mode['out_chans'],
+            qkv_bias=encoder_mode['qkv_bias'],
+            norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
+            act_layer=nn.GELU,
+            use_rel_pos=encoder_mode['use_rel_pos'],
+            rel_pos_zero_init=True,
+            window_size=encoder_mode['window_size'],
+            global_attn_indexes=encoder_mode['global_attn_indexes'],
+        )
+        self.prompt_embed_dim = encoder_mode['prompt_embed_dim']
+        self.mask_decoder = MaskDecoder(
+            num_multimask_outputs=3,
+            transformer=TwoWayTransformer(
+                depth=2,
+                embedding_dim=self.prompt_embed_dim,
+                mlp_dim=2048,
+                num_heads=8,
+            ),
+            transformer_dim=self.prompt_embed_dim,
+            iou_head_depth=3,
+            iou_head_hidden_dim=256,
+        )
+        self.obj_transform = get_transform(True)
+        self.num_point_embeddings: int = 4  # pos/neg point + 2 box corners
+        point_embeddings = [nn.Embedding(1, self.prompt_embed_dim) for i in range(self.num_point_embeddings)]
+        self.point_embeddings = nn.ModuleList(point_embeddings)
 
+
+
+
+        # @title ## Markdown
+        # self.obj_model = get_instance_segmentation_model(2,True, None)
+        # self.obj_model.to('cuda')
+        # self.obj_model.load_state_dict(torch.load('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/output/e_180_obj.pth'))
+        self.loss_mode = loss
+        if self.loss_mode == 'bce':
+            self.criterionBCE = torch.nn.BCEWithLogitsLoss()
+
+        elif self.loss_mode == 'bbce':
+            self.criterionBCE = BBCEWithLogitLoss()
+
+        elif self.loss_mode == 'iou':
+            self.criterionBCE = torch.nn.BCEWithLogitsLoss()
+            self.criterionIOU = IOU()
+        print('prompt_embed_dim] // 2',encoder_mode['prompt_embed_dim'] // 2)
+        self.pe_layer = PositionEmbeddingRandom(encoder_mode['prompt_embed_dim'] // 2)
+        self.inp_size = inp_size
+        self.image_embedding_size = inp_size // encoder_mode['patch_size']
+        self.no_mask_embed = nn.Embedding(1, encoder_mode['prompt_embed_dim'])
+        self.dice_focal_loss = monai.losses.DiceLoss(to_onehot_y=True)
+        self.transform = ResizeLongestSide(inp_size)
 
 
 @register('sam')
@@ -155,7 +219,6 @@ class SAM(nn.Module):
             iou_head_depth=3,
             iou_head_hidden_dim=256,
         )
-        self.boxes = nn.Parameter(torch.tensor([[0.,0.,1024.,1024.]]))
         self.obj_transform = get_transform(True)
         self.num_point_embeddings: int = 4  # pos/neg point + 2 box corners
         point_embeddings = [nn.Embedding(1, self.prompt_embed_dim) for i in range(self.num_point_embeddings)]
@@ -206,10 +269,8 @@ class SAM(nn.Module):
         return corner_embedding
 
 
-    def forward(self):
+    def forward(self,temperature=1):
         bs = 1
-        # print(self.boxes)
-        # Embed prompts
         _,H,W = self.gt_mask[0].shape
         #
         # x0,y0,x1,y1 =masks_to_boxes(self.gt_mask[0])[0].cpu().numpy().astype('int')
@@ -219,14 +280,16 @@ class SAM(nn.Module):
         # y1 = min(H, y1 + np.random.randint(0, 100))
         # boxes_highest = torch.tensor([[x0,y0,x1,y1]])
         # #
+        sparse_embeddings = torch.empty((bs, 0, self.prompt_embed_dim), device=self.input.device)
+
         # with torch.no_grad():
         #     self.obj_model.eval()
         #     img_inverse_n = inverse_normalize(self.input[0])
         #     result = self.obj_model([img_inverse_n])[0]
-        #     if len(result['boxes'])==0:
-        #         boxes_highest= torch.tensor([[0,0,1024,1024]]).cuda()
-        #     else:
+        #     if len(result['boxes'])>0:
         #         boxes_highest = result['boxes'][result['scores'].argmax().item()]
+        #         box_embeddings = self._embed_boxes(torch.tensor(boxes_highest,device=self.device))
+        #         sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
 
             # print(221,boxes_highest)
             # x0, y0, x1, y1 = boxes_highest
@@ -240,7 +303,6 @@ class SAM(nn.Module):
         # cv2.rectangle(draw_img, (x0,y0), (x1,y1), color=(255, 255, 0), thickness=2)
         # plt.imshow(draw_img)
         # plt.show()
-        sparse_embeddings = torch.empty((bs, 0, self.prompt_embed_dim), device=self.input.device)
         # box_embeddings = self._embed_boxes(torch.tensor(boxes_highest,device=self.device))
         # sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
 
@@ -248,7 +310,7 @@ class SAM(nn.Module):
             bs, -1, self.image_embedding_size, self.image_embedding_size
         )
 
-        self.features = self.image_encoder(self.input)
+        self.features = self.image_encoder(self.input,temperature)
 
         # Predict masks
         low_res_masks, iou_predictions = self.mask_decoder(
@@ -263,14 +325,14 @@ class SAM(nn.Module):
         masks = self.postprocess_masks(low_res_masks, self.inp_size, self.inp_size)
         self.pred_mask = masks
 
-    def infer(self, input,gt_original_cpu):
+    def infer(self, input,tempature=1):
         bs = 1
         # Embed prompts
-        sparse_embeddings = self.get_sparse_emb(bs,input,gt_original_cpu)
+        sparse_embeddings = self.get_sparse_emb(bs,input)
         dense_embeddings = self.no_mask_embed.weight.reshape(1, -1, 1, 1).expand(
             bs, -1, self.image_embedding_size, self.image_embedding_size
         )
-        self.features = self.image_encoder(input)
+        self.features = self.image_encoder(input,tempature)
 
         # Predict masks
         low_res_masks, iou_predictions = self.mask_decoder(
@@ -285,7 +347,7 @@ class SAM(nn.Module):
         masks = self.postprocess_masks(low_res_masks, self.inp_size, self.inp_size)
         return masks
 
-    def get_sparse_emb(self, bs,input,gt_original_cpu):
+    def get_sparse_emb(self, bs, input):
         # x0, y0, x1, y1 = masks_to_boxes(gt_mask[0])[0].cpu().numpy().astype('int')
         # _,H,W = self.gt_mask[0].shape
         # x0 = max(0, x0 - np.random.randint(0, 100))
@@ -293,14 +355,17 @@ class SAM(nn.Module):
         # x1 = max(0, x1 - np.random.randint(0, 100))
         # y1 = min(H, y1 + np.random.randint(0, 100))
 
+        sparse_embeddings = torch.empty((bs, 0, self.prompt_embed_dim), device=self.device)
         # with torch.no_grad():
         #     self.obj_model.eval()
         #     img_inverse_n = inverse_normalize(input[0])
         #     result = self.obj_model([img_inverse_n])[0]
-        #     if len(result['boxes'])==0:
-        #         boxes_highest= torch.tensor([[0,0,1024,1024]]).cuda()
-        #     else:
+        #     if len(result['boxes']) > 0:
         #         boxes_highest = result['boxes'][result['scores'].argmax().item()]
+        #         box_embeddings = self._embed_boxes(torch.tensor(boxes_highest, device=self.device))
+        #         sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
+
+
         # draw_img = gt_original_cpu.detach()
         # draw_img = draw_img.clone().cpu().numpy()[0].reshape(1024,1024,1)
         # draw_img = numpy.repeat(draw_img,3,2)
@@ -309,9 +374,6 @@ class SAM(nn.Module):
         # cv2.rectangle(draw_img, (x0,y0), (x1,y1), color=(255, 255, 0), thickness=2)
         # plt.imshow(draw_img)
         # plt.show()
-        sparse_embeddings = torch.empty((bs, 0, self.prompt_embed_dim), device=self.device)
-        # box_embeddings = self._embed_boxes(torch.tensor(boxes_highest, device=self.device))
-        # sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
         return sparse_embeddings
 
     def postprocess_masks(
@@ -353,8 +415,8 @@ class SAM(nn.Module):
 
         self.loss_G.backward()
 
-    def optimize_parameters(self):
-        self.forward()
+    def optimize_parameters(self,temperature):
+        self.forward(temperature)
 
         self.optimizer.zero_grad()  # set G's gradients to zero
         self.backward_G()  # calculate graidents for G
@@ -393,60 +455,62 @@ def get_transform(train):
     transforms.append(ToTensor())
 
     return Compose(transforms)
-@register('sam_adapter')
-class SAM_adapter(SAM):
-    def __init__(self, inp_size=None, encoder_mode=None, loss=None):
-        super().__init__(inp_size=inp_size, encoder_mode=encoder_mode, loss=loss)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.embed_dim = encoder_mode['embed_dim']
-        self.image_encoder = ImageEncoderViT_adapter(
-            img_size=inp_size,
-            patch_size=encoder_mode['patch_size'],
-            in_chans=3,
-            embed_dim=encoder_mode['embed_dim'],
-            depth=encoder_mode['depth'],
-            num_heads=encoder_mode['num_heads'],
-            mlp_ratio=encoder_mode['mlp_ratio'],
-            out_chans=encoder_mode['out_chans'],
-            qkv_bias=encoder_mode['qkv_bias'],
-            norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
-            act_layer=nn.GELU,
-            use_rel_pos=encoder_mode['use_rel_pos'],
-            rel_pos_zero_init=True,
-            window_size=encoder_mode['window_size'],
-            global_attn_indexes=encoder_mode['global_attn_indexes'],
-        )
-        self.prompt_embed_dim = encoder_mode['prompt_embed_dim']
-        self.mask_decoder = MaskDecoder(
-            num_multimask_outputs=3,
-            transformer=TwoWayTransformer(
-                depth=2,
-                embedding_dim=self.prompt_embed_dim,
-                mlp_dim=2048,
-                num_heads=8,
-            ),
-            transformer_dim=self.prompt_embed_dim,
-            iou_head_depth=3,
-            iou_head_hidden_dim=256,
-        )
 
-        if 'evp' in encoder_mode['name']:
-            for k, p in self.encoder.named_parameters():
-                if "prompt" not in k and "mask_decoder" not in k and "prompt_encoder" not in k:
-                    p.requires_grad = False
-
-        self.loss_mode = loss
-        if self.loss_mode == 'bce':
-            self.criterionBCE = torch.nn.BCEWithLogitsLoss()
-
-        elif self.loss_mode == 'bbce':
-            self.criterionBCE = BBCEWithLogitLoss()
-
-        elif self.loss_mode == 'iou':
-            self.criterionBCE = torch.nn.BCEWithLogitsLoss()
-            self.criterionIOU = IOU()
-
-        self.pe_layer = PositionEmbeddingRandom(encoder_mode['prompt_embed_dim'] // 2)
-        self.inp_size = inp_size
-        self.image_embedding_size = inp_size // encoder_mode['patch_size']
-        self.no_mask_embed = nn.Embedding(1, encoder_mode['prompt_embed_dim'])
+#
+# @register('sam_adapter')
+# class SAM_adapter(SAM):
+#     def __init__(self, inp_size=None, encoder_mode=None, loss=None):
+#         super().__init__(inp_size=inp_size, encoder_mode=encoder_mode, loss=loss)
+#         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         self.embed_dim = encoder_mode['embed_dim']
+#         self.image_encoder = ImageEncoderViT_adapter(
+#             img_size=inp_size,
+#             patch_size=encoder_mode['patch_size'],
+#             in_chans=3,
+#             embed_dim=encoder_mode['embed_dim'],
+#             depth=encoder_mode['depth'],
+#             num_heads=encoder_mode['num_heads'],
+#             mlp_ratio=encoder_mode['mlp_ratio'],
+#             out_chans=encoder_mode['out_chans'],
+#             qkv_bias=encoder_mode['qkv_bias'],
+#             norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
+#             act_layer=nn.GELU,
+#             use_rel_pos=encoder_mode['use_rel_pos'],
+#             rel_pos_zero_init=True,
+#             window_size=encoder_mode['window_size'],
+#             global_attn_indexes=encoder_mode['global_attn_indexes'],
+#         )
+#         self.prompt_embed_dim = encoder_mode['prompt_embed_dim']
+#         self.mask_decoder = MaskDecoder(
+#             num_multimask_outputs=3,
+#             transformer=TwoWayTransformer(
+#                 depth=2,
+#                 embedding_dim=self.prompt_embed_dim,
+#                 mlp_dim=2048,
+#                 num_heads=8,
+#             ),
+#             transformer_dim=self.prompt_embed_dim,
+#             iou_head_depth=3,
+#             iou_head_hidden_dim=256,
+#         )
+#
+#         if 'evp' in encoder_mode['name']:
+#             for k, p in self.encoder.named_parameters():
+#                 if "prompt" not in k and "mask_decoder" not in k and "prompt_encoder" not in k:
+#                     p.requires_grad = False
+#
+#         self.loss_mode = loss
+#         if self.loss_mode == 'bce':
+#             self.criterionBCE = torch.nn.BCEWithLogitsLoss()
+#
+#         elif self.loss_mode == 'bbce':
+#             self.criterionBCE = BBCEWithLogitLoss()
+#
+#         elif self.loss_mode == 'iou':
+#             self.criterionBCE = torch.nn.BCEWithLogitsLoss()
+#             self.criterionIOU = IOU()
+#
+#         self.pe_layer = PositionEmbeddingRandom(encoder_mode['prompt_embed_dim'] // 2)
+#         self.inp_size = inp_size
+#         self.image_embedding_size = inp_size // encoder_mode['patch_size']
+#         self.no_mask_embed = nn.Embedding(1, encoder_mode['prompt_embed_dim'])

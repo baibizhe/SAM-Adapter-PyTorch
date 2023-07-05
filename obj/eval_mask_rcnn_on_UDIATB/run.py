@@ -6,38 +6,21 @@ import torch
 import argparse
 import torchvision
 from torchvision.models.detection import MaskRCNN,FasterRCNN
+from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, fasterrcnn_resnet50_fpn
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+import yaml
+import models
 
 from obj.eval_mask_rcnn_on_UDIATB import utils
 
-
-def get_instance_segmentation_model(num_classes, pretrained, state_dict):
-    # load an instance segmentation model pre-trained on COCO/USCL
-    # model = get_customized_model(num_classes, pretrained, state_dict)
-    #
-    # # get the number of input features for the classifier
-    # in_features = model.roi_heads.box_predictor.cls_score.in_features
-    #
-    # # replace the pre-trained head with a new one
-    # model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-    model= fasterrcnn_resnet50_fpn(pretrained=True)
-    # # now get the number of input features for the mask classifier
-    # in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    # hidden_layer = 256
-    #
-    # # and replace the mask predictor with a new one
-    # model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
-    #                                                    hidden_layer,
-    #                                                    num_classes)
-    return model
-
-
 from obj.eval_mask_rcnn_on_UDIATB.datasets import USSegDataset
-from obj.eval_mask_rcnn_on_UDIATB.backbone_utils import resnet18_fpn_backbone
+from obj.eval_mask_rcnn_on_UDIATB.backbone_utils import resnet18_fpn_backbone, resnet50_fpn_backbone, VIT_fpn_backbone
 import obj.eval_mask_rcnn_on_UDIATB.utils
 import obj.eval_mask_rcnn_on_UDIATB.transforms as T
 from obj.eval_mask_rcnn_on_UDIATB.engine import train_one_epoch, evaluate
+
+
 
 
 def set_seed(seed=1):
@@ -45,6 +28,12 @@ def set_seed(seed=1):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
+def get_instance_segmentation_model(num_classes, pretrained, state_dict):
+
+    model= fasterrcnn_resnet50_fpn(pretrained=True)
+
+    return model
 
 
 def get_customized_model(num_classes, pretrained=False, state_dict=None):
@@ -55,26 +44,33 @@ def get_customized_model(num_classes, pretrained=False, state_dict=None):
         pretrained: whether to load ImageNet pretrained parameters
         state_dict: self/semi-supervised pretrained parameters path
     '''
-    backbone = resnet18_fpn_backbone(pretrained, state_dict)
+    # backbone = resnet50_fpn_backbone(pretrained, state_dict)
+    # backbone = resnet18_fpn_backbone(pretrained, state_dict)
 
+    with open('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-l-kvasir-seg.yaml', 'r') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    sam = models.make(config['model']).cuda()
+    # for name, para in sam.named_parameters():
+    #     para.requires_grad_(False)
+    for name, para in sam.named_parameters():
+        if "image_encoder" in name and "prompt_generator" not in name:
+            para.requires_grad_(False)
+    backbone =sam.image_encoder
     backbone.out_channels = 256
+
+    # backbone =VIT_fpn_backbone(backbone,None)
     roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0,1,2,3],
                                                     output_size=7,
                                                     sampling_ratio=2)
-
-    mask_roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0,1,2,3],
-                                                         output_size=14,
-                                                         sampling_ratio=2)
-    # put the pieces together inside a MaskRCNN model
-    model = FasterRCNN(backbone,
+    model = FasterRCNN(backbone,min_size=1024,max_size=1024,
                        num_classes=num_classes,
-                       box_roi_pool=roi_pooler,
+                       box_roi_pool=roi_pooler
+                       # rpn_anchor_generator=AnchorGenerator(sizes=((128, 256, 512),))
+                       # box_roi_pool=None,
                        )
-    # model = MaskRCNN(backbone,
-    #                  num_classes=num_classes,
-    #                  box_roi_pool=roi_pooler,
-    #                  mask_roi_pool=mask_roi_pooler)
-    
+    # print(model)
+    print('created model')
     return model
 
 
@@ -157,21 +153,23 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--depth', type=int, default=18)
     # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P51', help='path of data')
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
-    # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split5-95/fold1/P5', help='path of data')
-    # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split5-95/fold1/P95', help='path of data')
-    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/traning/split2080/fold1/P20', help='path of data')
-    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/test/Stage_3', help='path of data')
+    # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
+    # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
+    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P80', help='path of data')
+    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P20', help='path of data')
+    # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/traning/split2080/fold1/P20', help='path of data')
+    # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/test/Stage_3', help='path of data')
 
     parser.add_argument('-p', '--path', default='/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/eval_mask_rcnn_on_UDIATB/model_ckpt.zip', help='path of ckpt')
     parser.add_argument('-s', '--seed', type=int, default=1)
-    parser.add_argument('-e', '--epoch', type=int, default=200)
+    parser.add_argument('-e', '--epoch', type=int, default=100)
     args = parser.parse_args()
 
     ###################################### dataset #########################################
     dataset_dir = args.dataset_dir
     print('data dir is:', dataset_dir)
     dataset = USSegDataset(dataset_dir, get_transform(train=True))
-    dataset_test = USSegDataset(args.test_dataset_dir, get_transform(train=False),test=True,num_of_data=200)
+    dataset_test = USSegDataset(args.test_dataset_dir, get_transform(train=False),test=True)
 
     # split the dataset in train and test set
     set_seed(args.seed)
@@ -191,7 +189,7 @@ if __name__ == '__main__':
      
     # the dataset has two classes only - background and lesion
     num_classes = 2
-     
+
     # get the model using the helper function
     for state_dict in state_dicts:
 
@@ -202,9 +200,15 @@ if __name__ == '__main__':
             pretrained = False
 
         # define model
-        model = get_instance_segmentation_model(num_classes, True, None)
+        model = get_customized_model(num_classes, True, None)
         model.to(device)
 
+        model_total_params = sum(p.numel() for p in model.parameters())
+        model_grad_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        for name, para in model.named_parameters():
+            if para.requires_grad ==   True:
+                print(name)
+        print('model_grad_params:' + str(model_grad_params), '\nmodel_total_params:' + str(model_total_params))
         # construct an optimizer
         params = [p for p in model.parameters() if p.requires_grad]
         optimizer = torch.optim.SGD(params, lr=0.005, # 一般模型0.005学习率对于batchsize=1太大，容易loss=nan，但是学习率小了又会性能下降明显
@@ -230,7 +234,7 @@ if __name__ == '__main__':
             print('\nEvaluate epoch {}'.format(epoch))
             evaluate(model, data_loader_test, device=device,epoch=epoch)
             torch.save(model.state_dict(),os.path.join('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/output',f'e_{epoch}_obj.pth'))
-
+            # break
         print('Training finish, the time consumption is {}s'.format(round(time.time()-start)))
 
     # put the model in evaluation mode

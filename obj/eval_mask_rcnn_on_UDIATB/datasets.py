@@ -22,8 +22,8 @@ class USSegDataset(torch.utils.data.Dataset):
         self.imgs = list(sorted(os.listdir(os.path.join(root, "imgs"))))
         self.imgs = list(filter(lambda x: x.endswith('.jpg') or x.endswith('.png'), self.imgs))
         if test:
-            self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
-            self.masks = list(map(lambda x:os.path.join(root,'masks',x),self.masks ))
+            self.masks = list(sorted(os.listdir(os.path.join(root, "labels"))))
+            self.masks = list(map(lambda x:os.path.join(root,'labels',x),self.masks ))
             # self.masks = list(sorted(os.listdir(os.path.join(root, "labels"))))
             # self.masks = list(map(lambda x:os.path.join(root,'labels',x),self.masks ))
 
@@ -32,9 +32,9 @@ class USSegDataset(torch.utils.data.Dataset):
              self.masks = list(map(lambda x:os.path.join(root,'labels',x),self.masks ))
 
         self.masks = list(filter(lambda x: x.endswith('.jpg') or x.endswith('.png'), self.masks))
-        if num_of_data:
-            self.imgs = self.imgs[0:num_of_data]
-            self.masks = self.masks[0:num_of_data]
+        # if num_of_data:
+        #     self.imgs = self.imgs[0:num_of_data]
+        #     self.masks = self.masks[0:num_of_data]
         self.imgs = list(map(lambda x:os.path.join(root,'imgs',x),self.imgs ))
 
         # if test:

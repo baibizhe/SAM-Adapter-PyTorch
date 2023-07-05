@@ -9,6 +9,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from mmcv.cnn import ConvModule
+import einops
 
 from models import register
 from obj.eval_mask_rcnn_on_UDIATB.run import get_instance_segmentation_model
@@ -183,6 +185,168 @@ class SAM(nn.Module):
         self.transform = ResizeLongestSide(inp_size)
 
 
+class SAMAggregatorNeck(nn.Module):
+    def __init__(
+            self,
+            in_channels=[1280]*16,
+            inner_channels=128,
+            selected_channels: list=None,
+            out_channels=256,
+            kernel_size=3,
+            stride=1,
+            norm_cfg=dict(type='BN', requires_grad=True),
+            act_cfg=dict(type='ReLU', inplace=True),
+            up_sample_scale=4,
+            init_cfg=None,
+            **kwargs
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.norm_cfg = norm_cfg
+        self.act_cfg = act_cfg
+        self.out_channels = out_channels
+        self.stride = stride
+        self.selected_channels = selected_channels
+        self.up_sample_scale = up_sample_scale
+
+        self.down_sample_layers = nn.ModuleList()
+        for idx in self.selected_channels:
+            self.down_sample_layers.append(
+                nn.Sequential(
+                    ConvModule(
+                        in_channels[idx],
+                        inner_channels,
+                        kernel_size=1,
+                        norm_cfg=self.norm_cfg,
+                        act_cfg=self.act_cfg
+                    ),
+                    ConvModule(
+                        inner_channels,
+                        inner_channels,
+                        kernel_size=3,
+                        padding=1,
+                        stride=2,
+                        norm_cfg=self.norm_cfg,
+                        act_cfg=self.act_cfg
+                    ),
+                )
+            )
+        self.fusion_layers = nn.ModuleList()
+        for idx in self.selected_channels:
+            self.fusion_layers.append(
+                ConvModule(
+                    inner_channels,
+                    inner_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                )
+            )
+        self.up_layers = nn.ModuleList()
+        self.up_layers.append(
+            nn.Sequential(
+                ConvModule(
+                    inner_channels,
+                    inner_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                ),
+                ConvModule(
+                    inner_channels,
+                    inner_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                )
+            )
+        )
+        self.up_layers.append(
+            ConvModule(
+                inner_channels,
+                out_channels,
+                kernel_size=1,
+                norm_cfg=self.norm_cfg,
+                act_cfg=None
+            )
+        )
+
+        self.up_sample_layers = nn.ModuleList()
+        assert up_sample_scale == 4
+        self.up_sample_layers.append(
+            nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+                ConvModule(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                ),
+                ConvModule(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                )
+            )
+        )
+
+        self.up_sample_layers.append(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        )
+
+        self.up_sample_layers.append(
+            nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+                ConvModule(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                ),
+                ConvModule(
+                    out_channels,
+                    out_channels,
+                    kernel_size=3,
+                    padding=1,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg
+                )
+            )
+        )
+
+        self.up_sample_layers.append(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        )
+
+    def forward(self, inputs):
+        inner_states = inputs
+        inner_states = [einops.rearrange(inner_states[idx], 'b h w c -> b c h w') for idx in self.selected_channels]
+        inner_states = [layer(x) for layer, x in zip(self.down_sample_layers, inner_states)]
+
+        x = None
+        for inner_state, layer in zip(inner_states, self.fusion_layers):
+            if x is not None:
+                inner_state = x + inner_state
+            x = inner_state + layer(inner_state)
+        x = self.up_layers[0](x) + x
+        img_feats_0 = self.up_layers[1](x)
+
+        img_feats_1 = self.up_sample_layers[0](img_feats_0) + self.up_sample_layers[1](img_feats_0)
+
+        img_feats_2 = self.up_sample_layers[2](img_feats_1) + self.up_sample_layers[3](img_feats_1)
+
+        return img_feats_2, img_feats_1, img_feats_0
 @register('sam')
 class SAM(nn.Module):
     def __init__(self, inp_size=None, encoder_mode=None, loss=None):
@@ -244,6 +408,32 @@ class SAM(nn.Module):
         self.no_mask_embed = nn.Embedding(1, encoder_mode['prompt_embed_dim'])
         self.dice_focal_loss = monai.losses.DiceLoss(to_onehot_y=True)
         self.transform = ResizeLongestSide(inp_size)
+
+        #TODO
+        # self.GeneralizedRCNNTransform=GeneralizedRCNNTransform()
+        # self.rpn = RegionProposalNetwork(
+        #             rpn_anchor_generator, rpn_head,
+        #             rpn_fg_iou_thresh, rpn_bg_iou_thresh,
+        #             rpn_batch_size_per_image, rpn_positive_fraction,
+        #             rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh,
+        #             score_thresh=rpn_score_thresh)
+        # self. roi_heads = RoIHeads(
+        #     box_roi_pool, box_head, box_predictor,
+        #     box_fg_iou_thresh, box_bg_iou_thresh,
+        #     box_batch_size_per_image, box_positive_fraction,
+        #     bbox_reg_weights,
+        #     box_score_thresh, box_nms_thresh, box_detections_per_img)
+
+
+
+        self.neck = SAMAggregatorNeck(
+            # in_channels=[1280] * 32,
+            in_channels=[768] * 12,
+            inner_channels=32,
+            # selected_channels=range(8, 32, 2),
+            selected_channels=list(range(4, 12, 2)),
+            out_channels=256,
+            up_sample_scale=4,)
     def set_input(self, input, gt_mask):
         self.input = input.to(self.device)
         self.gt_mask = gt_mask.to(self.device)
@@ -310,7 +500,8 @@ class SAM(nn.Module):
             bs, -1, self.image_embedding_size, self.image_embedding_size
         )
 
-        self.features = self.image_encoder(self.input,temperature)
+        self.features,features_multilayers = self.image_encoder(self.input)
+        fused_features_multilayers = self.neck(features_multilayers)
 
         # Predict masks
         low_res_masks, iou_predictions = self.mask_decoder(

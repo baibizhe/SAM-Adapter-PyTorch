@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from torch import nn
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork, LastLevelMaxPool
 
 
@@ -7,7 +8,8 @@ import os, sys
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 from torchvision.ops import misc as misc_nn_ops
 from _utils import IntermediateLayerGetter
-from resnet_maskrcnn import get_pretrained_resnet18, get_pretrained_wide_resnet50_2, get_pretrained_resnet101
+from resnet_maskrcnn import get_pretrained_resnet18, get_pretrained_wide_resnet50_2, get_pretrained_resnet101, \
+    get_pretrained_resnet50
 
 
 class BackboneWithFPN(nn.Sequential):
@@ -42,11 +44,56 @@ class BackboneWithFPN(nn.Sequential):
             [("body", body), ("fpn", fpn)]))
         self.out_channels = out_channels
 
+def resnet50_fpn_backbone(pretrained, state_dict):
+    # backbone = get_pretrained_resnet18(pretrained, state_dict)
+    backbone  = get_pretrained_resnet50(pretrained, state_dict)
+    # backbone = get_pretrained_resnet18(pretrained, state_dict)
+    # freeze layers
+    # for name, parameter in backbone.named_parameters():
+    #     if 'layer2' not in name and 'layer3' not in name and 'layer4' not in name:
+    #         parameter.requires_grad_(False)
+
+    return_layers = {'layer1': 0, 'layer2': 1, 'layer3': 2, 'layer4': 3}
+
+    in_channels_stage2 = backbone.inplanes // 8
+    in_channels_list = [
+        in_channels_stage2,
+        in_channels_stage2 * 2,
+        in_channels_stage2 * 4,
+    ]
+    out_channels = 256
+    # return resnet_fpn_backbone('resnet50',pretrained=True)
+
+    return BackboneWithFPN(backbone, return_layers, in_channels_list, out_channels)
+
+
+
+def VIT_fpn_backbone(VIT, state_dict):
+    # freeze layers
+    # for name, parameter in backbone.named_parameters():
+    #     if 'layer2' not in name and 'layer3' not in name and 'layer4' not in name:
+    #         parameter.requires_grad_(False)
+
+    return_layers = {'layer1': 0, 'layer2': 1, 'layer3': 2, 'layer4': 3}
+
+    in_channels_stage2 =32
+    in_channels_list = [
+        in_channels_stage2,
+        in_channels_stage2 * 2,
+        in_channels_stage2 * 4,
+    ]
+    out_channels = 256
+    # return resnet_fpn_backbone('resnet50',pretrained=True)
+
+    return BackboneWithFPN(VIT, return_layers, in_channels_list, out_channels)
+
+
+
 
 def resnet18_fpn_backbone(pretrained, state_dict):
     # backbone = get_pretrained_resnet18(pretrained, state_dict) # 这里直接用12分类的resnet18
     # backbone  = get_pretrained_wide_resnet50_2(pretrained, state_dict)
-    backbone = get_pretrained_resnet101(pretrained, state_dict)
+    backbone = get_pretrained_resnet18(pretrained, state_dict)
     # freeze layers
     for name, parameter in backbone.named_parameters():
         if 'layer2' not in name and 'layer3' not in name and 'layer4' not in name:

@@ -293,14 +293,6 @@ class SAM_anchor(SAM):
             score_thresh=0.05,
             nms_thresh=0.5,
             detections_per_img=100)
-        # self.obj_roi_heads = RoIHeads(
-        #     box_roi_pool=self.obj_roi_pooler, box_head=self.obj_box_head, box_predictor=self.obj_box_predictor,
-        #     fg_iou_thresh=0.5, bg_iou_thresh=0.5,
-        #     batch_size_per_image=512, positive_fraction=0.25,
-        #     bbox_reg_weights=None,
-        #     score_thresh=0.05,
-        #     nms_thresh=0.5,
-        #     detections_per_img=100)
         # self.rcnn_transform = GeneralizedRCNNTransform(1024, 1024,[0.485, 0.456, 0.406],[0.229, 0.224, 0.225])  # do not normalize here because we already normalize in dataset
         self.loss_info_dict ={}                                                           # return (image - mean[:, None, None]) / std[:, None, None]
 

@@ -312,15 +312,15 @@ class SAM_anchor(SAM):
         if encoder_mode['embed_dim'] == 768:
             print('sam base init with embed_dim  768')
             in_channels = [768] * 12
-            selected_channels = list(range(4, 12, 2))
+            selected_channels = list(range(0, 12, 2))
         elif encoder_mode['embed_dim'] == 1024:
             print('sam l init with embed_dim  1024')
-            in_channels = [1024] * 32
-            selected_channels = list(range(8, 32, 2))
+            in_channels = [1024] * 24
+            selected_channels = list(range(0, 24, 2))
         elif encoder_mode['embed_dim'] == 1280:
             print('sam huge init with embed_dim  1280')
-            in_channels = 1024
-            selected_channels = list(range(8, 32, 2))
+            in_channels = [1280] *32
+            selected_channels = list(range(0, 32, 2))
         else:
             raise Exception('others does not support yet')
         return in_channels, selected_channels

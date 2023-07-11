@@ -47,7 +47,7 @@ def get_customized_model(num_classes, pretrained=False, state_dict=None):
     # backbone = resnet50_fpn_backbone(pretrained, state_dict)
     # backbone = resnet18_fpn_backbone(pretrained, state_dict)
 
-    with open('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-l-kvasir-seg.yaml', 'r') as f:
+    with open('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-anchor-b-kvasir-seg.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     sam = models.make(config['model']).cuda()
@@ -155,8 +155,8 @@ if __name__ == '__main__':
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
     # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
-    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P80', help='path of data')
-    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P20', help='path of data')
+    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P20', help='path of data')
+    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P80', help='path of data')
     # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/traning/split2080/fold1/P20', help='path of data')
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/test/Stage_3', help='path of data')
 

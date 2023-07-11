@@ -11,11 +11,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
 import einops
+from torch.cuda.amp import autocast as autocast
 
 from models import register
 from obj.eval_mask_rcnn_on_UDIATB.run import get_instance_segmentation_model
 from .mmseg.models.sam import ImageEncoderViT, MaskDecoder, TwoWayTransformer
 from .mmseg.models.sam.image_encoder_adapter import ImageEncoderViT_adapter
+from .mmseg.models.sam.image_encoder_anchor import ImageEncoderViT_anchor
 from .transforms import ResizeLongestSide
 
 logger = logging.getLogger(__name__)
@@ -387,7 +389,7 @@ class SAM(nn.Module):
         self.num_point_embeddings: int = 4  # pos/neg point + 2 box corners
         point_embeddings = [nn.Embedding(1, self.prompt_embed_dim) for i in range(self.num_point_embeddings)]
         self.point_embeddings = nn.ModuleList(point_embeddings)
-
+        self.model_name = 'sam'
         # self.obj_model = get_instance_segmentation_model(2,True, None)
         # self.obj_model.to('cuda')
         # self.obj_model.load_state_dict(torch.load('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/obj/output/e_180_obj.pth'))
@@ -409,34 +411,9 @@ class SAM(nn.Module):
         self.dice_focal_loss = monai.losses.DiceLoss(to_onehot_y=True)
         self.transform = ResizeLongestSide(inp_size)
 
-        #TODO
-        # self.GeneralizedRCNNTransform=GeneralizedRCNNTransform()
-        # self.rpn = RegionProposalNetwork(
-        #             rpn_anchor_generator, rpn_head,
-        #             rpn_fg_iou_thresh, rpn_bg_iou_thresh,
-        #             rpn_batch_size_per_image, rpn_positive_fraction,
-        #             rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh,
-        #             score_thresh=rpn_score_thresh)
-        # self. roi_heads = RoIHeads(
-        #     box_roi_pool, box_head, box_predictor,
-        #     box_fg_iou_thresh, box_bg_iou_thresh,
-        #     box_batch_size_per_image, box_positive_fraction,
-        #     bbox_reg_weights,
-        #     box_score_thresh, box_nms_thresh, box_detections_per_img)
-
-
-
-        self.neck = SAMAggregatorNeck(
-            # in_channels=[1280] * 32,
-            in_channels=[768] * 12,
-            inner_channels=32,
-            # selected_channels=range(8, 32, 2),
-            selected_channels=list(range(4, 12, 2)),
-            out_channels=256,
-            up_sample_scale=4,)
     def set_input(self, input, gt_mask):
-        self.input = input.to(self.device)
-        self.gt_mask = gt_mask.to(self.device)
+        self.input = input
+        self.gt_mask = gt_mask
 
     def get_dense_pe(self) -> torch.Tensor:
         """
@@ -499,9 +476,10 @@ class SAM(nn.Module):
         dense_embeddings = self.no_mask_embed.weight.reshape(1, -1, 1, 1).expand(
             bs, -1, self.image_embedding_size, self.image_embedding_size
         )
+        self.features= self.image_encoder(self.input)
 
-        self.features,features_multilayers = self.image_encoder(self.input)
-        fused_features_multilayers = self.neck(features_multilayers)
+        # self.features,features_multilayers = self.image_encoder(self.input)
+        # fused_features_multilayers = self.neck(features_multilayers)
 
         # Predict masks
         low_res_masks, iou_predictions = self.mask_decoder(
@@ -511,7 +489,7 @@ class SAM(nn.Module):
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=False,
         )
-
+        self.loss_info_dict ={}
         # Upscale the masks to the original image resolution
         masks = self.postprocess_masks(low_res_masks, self.inp_size, self.inp_size)
         self.pred_mask = masks
@@ -603,11 +581,11 @@ class SAM(nn.Module):
         if self.loss_mode == 'iou':
             self.loss_G += _iou_loss(self.pred_mask, self.gt_mask)
             # self.loss_G += self.dice_focal_loss(self.pred_mask, self.gt_mask)*0.5
-
+        self.loss_info_dict['total loss'] = self.loss_G
         self.loss_G.backward()
 
-    def optimize_parameters(self,temperature):
-        self.forward(temperature)
+    def optimize_parameters(self):
+        self.forward(1)
 
         self.optimizer.zero_grad()  # set G's gradients to zero
         self.backward_G()  # calculate graidents for G
@@ -647,61 +625,62 @@ def get_transform(train):
 
     return Compose(transforms)
 
-#
-# @register('sam_adapter')
-# class SAM_adapter(SAM):
-#     def __init__(self, inp_size=None, encoder_mode=None, loss=None):
-#         super().__init__(inp_size=inp_size, encoder_mode=encoder_mode, loss=loss)
-#         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#         self.embed_dim = encoder_mode['embed_dim']
-#         self.image_encoder = ImageEncoderViT_adapter(
-#             img_size=inp_size,
-#             patch_size=encoder_mode['patch_size'],
-#             in_chans=3,
-#             embed_dim=encoder_mode['embed_dim'],
-#             depth=encoder_mode['depth'],
-#             num_heads=encoder_mode['num_heads'],
-#             mlp_ratio=encoder_mode['mlp_ratio'],
-#             out_chans=encoder_mode['out_chans'],
-#             qkv_bias=encoder_mode['qkv_bias'],
-#             norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
-#             act_layer=nn.GELU,
-#             use_rel_pos=encoder_mode['use_rel_pos'],
-#             rel_pos_zero_init=True,
-#             window_size=encoder_mode['window_size'],
-#             global_attn_indexes=encoder_mode['global_attn_indexes'],
-#         )
-#         self.prompt_embed_dim = encoder_mode['prompt_embed_dim']
-#         self.mask_decoder = MaskDecoder(
-#             num_multimask_outputs=3,
-#             transformer=TwoWayTransformer(
-#                 depth=2,
-#                 embedding_dim=self.prompt_embed_dim,
-#                 mlp_dim=2048,
-#                 num_heads=8,
-#             ),
-#             transformer_dim=self.prompt_embed_dim,
-#             iou_head_depth=3,
-#             iou_head_hidden_dim=256,
-#         )
-#
-#         if 'evp' in encoder_mode['name']:
-#             for k, p in self.encoder.named_parameters():
-#                 if "prompt" not in k and "mask_decoder" not in k and "prompt_encoder" not in k:
-#                     p.requires_grad = False
-#
-#         self.loss_mode = loss
-#         if self.loss_mode == 'bce':
-#             self.criterionBCE = torch.nn.BCEWithLogitsLoss()
-#
-#         elif self.loss_mode == 'bbce':
-#             self.criterionBCE = BBCEWithLogitLoss()
-#
-#         elif self.loss_mode == 'iou':
-#             self.criterionBCE = torch.nn.BCEWithLogitsLoss()
-#             self.criterionIOU = IOU()
-#
-#         self.pe_layer = PositionEmbeddingRandom(encoder_mode['prompt_embed_dim'] // 2)
-#         self.inp_size = inp_size
-#         self.image_embedding_size = inp_size // encoder_mode['patch_size']
-#         self.no_mask_embed = nn.Embedding(1, encoder_mode['prompt_embed_dim'])
+
+@register('sam_anchor')
+class SAM_adapter(SAM):
+    def __init__(self, inp_size=None, encoder_mode=None, loss=None):
+        super().__init__(inp_size=inp_size, encoder_mode=encoder_mode, loss=loss)
+
+        #TODO
+        # self.GeneralizedRCNNTransform=GeneralizedRCNNTransform()
+        # self.rpn = RegionProposalNetwork(
+        #             rpn_anchor_generator, rpn_head,
+        #             rpn_fg_iou_thresh, rpn_bg_iou_thresh,
+        #             rpn_batch_size_per_image, rpn_positive_fraction,
+        #             rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh,
+        #             score_thresh=rpn_score_thresh)
+        # self. roi_heads = RoIHeads(
+        #     box_roi_pool, box_head, box_predictor,
+        #     box_fg_iou_thresh, box_bg_iou_thresh,
+        #     box_batch_size_per_image, box_positive_fraction,
+        #     bbox_reg_weights,
+        #     box_score_thresh, box_nms_thresh, box_detections_per_img)
+
+        self.neck = SAMAggregatorNeck(
+            # in_channels=[1280] * 32,
+            in_channels=[768] * 12,
+            inner_channels=32,
+            # selected_channels=range(8, 32, 2),
+            selected_channels=list(range(4, 12, 2)),
+            out_channels=256,
+            up_sample_scale=4,)
+    def forward(self,temperature=1):
+        bs = 1
+        _, H, W = self.gt_mask[0].shape
+
+        self.features, features_multilayers = self.image_encoder(self.input)
+        fused_features_multilayers = self.neck(features_multilayers)
+        boxes_highest = None
+        sparse_embeddings = torch.empty((bs, 0, self.prompt_embed_dim), device=self.input.device)
+        box_embeddings = self._embed_boxes(torch.tensor(boxes_highest, device=self.device))
+        sparse_embeddings = torch.cat([sparse_embeddings, box_embeddings], dim=1)
+        dense_embeddings = self.no_mask_embed.weight.reshape(1, -1, 1, 1).expand(
+            bs, -1, self.image_embedding_size, self.image_embedding_size
+        )
+        # Predict masks
+        low_res_masks, iou_predictions = self.mask_decoder(
+            image_embeddings=self.features,
+            image_pe=self.get_dense_pe(),
+            sparse_prompt_embeddings=sparse_embeddings,
+            dense_prompt_embeddings=dense_embeddings,
+            multimask_output=False,
+        )
+
+        # Upscale the masks to the original image resolution
+        masks = self.postprocess_masks(low_res_masks, self.inp_size, self.inp_size)
+        self.pred_mask = masks
+        #TODO
+        pass
+    def infer(self, input,tempature=1):
+        #TODO
+        pass

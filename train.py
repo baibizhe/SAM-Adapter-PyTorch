@@ -10,7 +10,6 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.cuda.amp import autocast as autocast, GradScaler
-
 import datasets
 import models
 import utils
@@ -24,23 +23,6 @@ torch.cuda.set_device(local_rank)
 device = torch.device("cuda", local_rank)
 
 
-def make_MSC_nii_data_loader (spec, tag=''):
-    if spec is None:
-        return None
-    data_list= []
-    image_dir_list = os.listdir(spec['args']['root_path_1'])
-    label_dir_list = os.listdir(spec['args']['root_path_2'])
-    image_dir_list= list(map(lambda x:os.path.join(spec['args']['root_path_1'],x),image_dir_list))
-    label_dir_list= list(map(lambda x:os.path.join(spec['args']['root_path_2'],x),label_dir_list))
-    print(label_dir_list[0:3],'label_dir_list[0:3]')
-    print(image_dir_list[0:3],'image_dir_list[0:3]')
-
-    assert len(image_dir_list) == len(label_dir_list)
-
-    for i in range(len(image_dir_list)):
-        data_list.append({'img':image_dir_list[i],'seg':label_dir_list[i]})
-    dataset = monai.data.Dataset(data=data_list)
-
 def make_data_loader(spec, tag=''):
     if spec is None:
         return None
@@ -50,13 +32,9 @@ def make_data_loader(spec, tag=''):
     if local_rank == 0:
         log('{} dataset: size={}'.format(tag, len(dataset)))
         for k, v in dataset[0].items():
-            if 'shape' in k:
+            if 'rcnn' in k:
                 continue
             log('  {}: shape={}'.format(k, tuple(v.shape)))
-    # if tag != 'train':
-    #     warnings.warn(
-    #         'this design is spefic for kvasir .which original design might end up with some val images contains in traning imges')
-    #     dataset = torch.utils.data.Subset(dataset.dataset, list(range(0, 200)))
     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     loader = DataLoader(dataset, batch_size=spec['batch_size'],
         shuffle=False, num_workers=4, pin_memory=True, sampler=sampler)
@@ -71,70 +49,8 @@ def make_data_loaders():
     val_loaders = []
     for i in range(1,val_data_num+1):
         val_loader = make_data_loader(config['val_datasets'][f'val_dataset{i}'], tag='val')
-        # temp_val_dataset = torch.utils.data.Subset(val_loader.dataset,list(range(0,200)))
-        # val_loader.dataset = temp_val_dataset
         val_loaders.append(val_loader)
-    # val_loader = make_data_loader(config.get('val_dataset'), tag='val')
-    # datasets_name = ['Kvasir','CVC-ClinicDB','CVC-ColonDB','ETIS-pDB','CVC-300',]
-    # if config.get('val_dataset1'):
-    #     val_loader1 = make_data_loader(config.get('val_dataset1'), tag='val')
-    #     val_loader2 = make_data_loader(config.get('val_dataset2'), tag='val')
-    #     val_loader3 = make_data_loader(config.get('val_dataset3'), tag='val')
-    #     val_loader4 = make_data_loader(config.get('val_dataset4'), tag='val')
-    #     return  train_loader, [val_loader,val_loader1,val_loader2,val_loader3,val_loader4] ,datasets_name
     return train_loader, val_loaders,val_data_names
-
-#
-# def eval_psnr(loader, model, eval_type=None):
-#     model.eval()
-#
-#     if eval_type == 'f1':
-#         metric_fn = utils.calc_f1
-#         metric1, metric2, metric3, metric4 = 'f1', 'auc', 'none', 'none'
-#     elif eval_type == 'fmeasure':
-#         metric_fn = utils.calc_fmeasure
-#         metric1, metric2, metric3, metric4 = 'f_mea', 'mae', 'none', 'none'
-#     elif eval_type == 'ber':
-#         metric_fn = utils.calc_ber
-#         metric1, metric2, metric3, metric4 = 'shadow', 'non_shadow', 'ber', 'none'
-#     elif eval_type == 'cod':
-#         metric_fn = utils.calc_cod
-#         metric1, metric2, metric3, metric4 = 'sm', 'em', 'wfm', 'mae'
-#
-#     if local_rank == 0:
-#         pbar = tqdm(total=len(loader), leave=False, desc='val')
-#     else:
-#         pbar = None
-#
-#     pred_list = []
-#     gt_list = []
-#     for batch in loader:
-#         for k, v in batch.items():
-#             batch[k] = v.cuda()
-#
-#         inp = batch['inp']
-#
-#         pred = torch.sigmoid(model.infer(inp))
-#
-#         batch_pred = [torch.zeros_like(pred) for _ in range(dist.get_world_size())]
-#         batch_gt = [torch.zeros_like(batch['gt']) for _ in range(dist.get_world_size())]
-#
-#         dist.all_gather(batch_pred, pred)
-#         pred_list.extend(batch_pred)
-#         dist.all_gather(batch_gt, batch['gt'])
-#         gt_list.extend(batch_gt)
-#         if pbar is not None:
-#             pbar.update(1)
-#
-#     if pbar is not None:
-#         pbar.close()
-#
-#     pred_list = torch.cat(pred_list, 1)
-#     gt_list = torch.cat(gt_list, 1)
-#     result1, result2, result3, result4 = metric_fn(pred_list, gt_list)
-#
-#     return result1, result2, result3, result4, metric1, metric2, metric3, metric4
-
 
 def compute_dice_coefficient(mask_gt, mask_pred):
     """Compute soerensen-dice coefficient.
@@ -188,8 +104,12 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
                 batch[k] = v.cuda()
             inp=batch['inp']
 
-            with torch.autocast(device_type = 'cuda'):
-                pred = torch.sigmoid(model.infer(inp,temperature))
+            # with torch.autocast(device_type = 'cuda'):
+            if idx <10:
+                pred = torch.sigmoid(model.infer(inp,temperature,gt_original_cpu))
+            else:
+                pred = torch.sigmoid(model.infer(inp,temperature,None))
+
             total_num_samples += pred.shape[0]
             # print(pred.min(),pred.max(),gt_original_cpu.min(),gt_original_cpu.max())
 
@@ -217,8 +137,8 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
                                   global_step=epcoh)
                 writer.add_images(tag=f"images/{idx}/valid_label_images", img_tensor=batch['gt'].cpu().numpy(),
                                   global_step=epcoh)
-            if count >200:
-                break
+            # if count >200:
+            #     break
     if pbar is not None:
         pbar.close()
 
@@ -258,7 +178,14 @@ def prepare_training_adapter():
     if local_rank == 0:
         log('model: #params={}'.format(utils.compute_num_params(model, text=True)))
     return model, optimizer, epoch_start
-
+def merge_with(d1, d2, fn=lambda x, y: x + y):
+    res = d1.copy() # "= dict(d1)" for lists of tuples
+    for key, val in d2.items(): # ".. in d2" for lists of tuples
+        try:
+            res[key] = fn(res[key], val)
+        except KeyError:
+            res[key] = val
+    return res
 
 def train(train_loader, model,temperature):
     model.train()
@@ -266,29 +193,33 @@ def train(train_loader, model,temperature):
         pbar = tqdm(total=len(train_loader), leave=False, desc='train')
     else:
         pbar = None
-
-    loss_list = []
+    loss_dict= {}
+    total_samples = 0
     for batch in train_loader:
         for k, v in batch.items():
             if isinstance(v,torch.Tensor):
-                batch[k] = v.to(device)
+                batch[k] = v.to(device, non_blocking=True)
         inp = batch['inp']
         gt = batch['gt']
-        # print(inp.shape,gt.shape)
+        total_samples+=inp.shape[0]
+        if model.model_name == 'sam_anchor':
+            model.set_input_anchor(inp, gt,batch['rcnn_targets'])
+        else:
+            model.set_input(inp, gt)
 
-        model.set_input(inp, gt)
-        model.optimize_parameters(temperature)
+        model.optimize_parameters()
         batch_loss = [torch.zeros_like(model.loss_G) for _ in range(dist.get_world_size())]
         dist.all_gather(batch_loss, model.loss_G)
-        loss_list.extend(batch_loss)
+        loss_dict = merge_with(loss_dict,model.loss_info_dict)
+        # print(209,loss_dict)
         if pbar is not None:
             pbar.update(1)
         # break
     if pbar is not None:
         pbar.close()
-
-    loss = [i.item() for i in loss_list]
-    return mean(loss)
+    for k,v in loss_dict.items():
+        loss_dict[k] = loss_dict[k]/total_samples
+    return loss_dict
 def exec_fun(model,input):
     model(**input)
 
@@ -325,67 +256,25 @@ def main(config_, save_path, args):
     model = model.module
 
     sam_checkpoint = torch.load(config['sam_checkpoint'])
+    obj_params = []
+    for name, para in model.named_parameters():
+        if "obj" in name:
+            obj_params.append(para)
 
+    # obj_optimizer = torch.optim.SGD(obj_params, lr=0.005,  # 一般模型0.005学习率对于batchsize=1太大，容易loss=nan，但是学习率小了又会性能下降明显
+    #                             momentum=0.9, weight_decay=0.0005)
+    # model.obj_optimizer =obj_optimizer
     model.load_state_dict(sam_checkpoint, strict=False)
-
-
-    # current_model_dict = model.state_dict()
-    # new_state_dict = {k: v if v.size() == current_model_dict[k].size() else current_model_dict[k] for k, v in
-    #                   zip(current_model_dict.keys(), sam_checkpoint.values())}
-    # new_state_dict = OrderedDict(new_state_dict)
-    #
-    # message = model.load_state_dict(new_state_dict, strict=False)
-    # print(message)
     for name, para in model.named_parameters():
         if "image_encoder" in name and "prompt_generator" not in name:
             para.requires_grad_(False)
-    for name, para in model.named_parameters():
-        if "obj_model" in name :
-            para.requires_grad_(False)
     # for name, para in model.named_parameters():
-    #     if para.requires_grad ==   True:
+    #     if para.requires_grad:
     #         print(name)
-
-
-    # else:
-        #     print(name)
-
-            # ============================================================
-            # ============================================================
-
-    # #
-    # current_model_dict = model.state_dict()
-    # warnings.warn('loading state dict is not strcit')
-    # new_state_dict = {k: v if v.size() == current_model_dict[k].size() else current_model_dict[k] for k, v in
-    #                   zip(current_model_dict.keys(), sam_checkpoint.values())}
-    # new_state_dict = OrderedDict(new_state_dict)
-    # pos_embed = sam_checkpoint['image_encoder.pos_embed']
-    # pos_embed = torch.nn.functional.interpolate(pos_embed.permute(0, 3, 1, 2), scale_factor=(1 / 2, 1 / 2),
-    #                                             mode='bicubic').permute(0, 2, 3, 1)
-    # sam_checkpoint['image_encoder.pos_embed'] = pos_embed
-    # message = model.load_state_dict(new_state_dict, strict=False)
-    # print(message)
-    #
-    # #
-    # # message = sam.load_state_dict(new_state_dict, strict=False)
-    # for name, para in model.named_parameters():
-    #     if ("image_encoder" in name and "prompt_generator"  in name) or ("image_encoder" in name and "rel_pos"  in name)   \
-    #          or ("image_encoder" in name and "Adapter"  in name) or  ("mask_decoder" in name ):
-    #         para.requires_grad_(True)
-    #         print(name)
-    #
-    #     else:
-    #         para.requires_grad_(False)
-
-
-
-    #
     if local_rank == 0:
         model_total_params = sum(p.numel() for p in model.parameters())
         model_grad_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print('model_grad_params:' + str(model_grad_params), '\nmodel_total_params:' + str(model_total_params))
-    # model =  torch.compile(model,mode='max-autotune')
-
     epoch_val = config.get('epoch_val')
     timer = utils.Timer()
     early_stop_e = 0
@@ -396,10 +285,9 @@ def main(config_, save_path, args):
     #sinx is ok
     for epoch in range(epoch_start, epoch_max + 1):
         # temperature = 1-epoch/epoch_max
-        print("cur temp",temperature)
         train_loader.sampler.set_epoch(epoch)
         t_epoch_start = timer.t()
-        train_loss_G = train(train_loader, model,temperature)
+        train_loss_G_info = train(train_loader, model,temperature)
         # train_loss_G = 0
 
         lr_scheduler.step()
@@ -407,9 +295,10 @@ def main(config_, save_path, args):
         if local_rank == 0:
             log_info = ['epoch {}/{}'.format(epoch, epoch_max)]
             writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
-            log_info.append('train G: loss={:.4f}'.format(train_loss_G))
+            for k,v in train_loss_G_info.items():
+                log_info.append('{} : {:.4f}'.format(k,train_loss_G_info[k]))
             log_info.append('lr={:.5f}'.format(optimizer.param_groups[0]['lr']))
-            writer.add_scalar('train_loss',  train_loss_G, epoch)
+            writer.add_scalars('train_loss',  train_loss_G_info, epoch)
             model_spec = config['model']
             model_spec['sd'] = model.state_dict()
             optimizer_spec = config['optimizer']
@@ -419,7 +308,7 @@ def main(config_, save_path, args):
         epoch_m_iou = 0
         total_samples = 0
         # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        if (epoch_val is not None) and (epoch >= 5 )  and (epoch%1 ==0) :
+        if (epoch_val is not None) and (epoch >= 3 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,

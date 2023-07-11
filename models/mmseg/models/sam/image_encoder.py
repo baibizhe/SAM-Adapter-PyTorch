@@ -136,30 +136,7 @@ class ImageEncoderViT(nn.Module):
         self.num_stages = self.depth
         self.out_indices = tuple(range(self.num_stages))
 
-    # def forward(self, x: torch.Tensor,temperature =1 ) -> torch.Tensor:
-    #     inp = x
-    #     x = self.patch_embed(x)
-    #     embedding_feature = self.prompt_generator.init_embeddings(x)  #simple embedding_generator(x)
-    #     handcrafted_feature = self.prompt_generator.init_handcrafted(inp) #fft(inp)  | prompt_generator():PatchEmbed2():Conv2d()
-    #     prompt = self.prompt_generator.get_prompt(handcrafted_feature, embedding_feature)
-    #
-    #     # x= self.color_jittor(x)
-    #     if self.pos_embed is not None:
-    #         x = x + self.pos_embed
-    #
-    #     B, H, W = x.shape[0], x.shape[1], x.shape[2]
-    #     for i, blk in enumerate(self.blocks):
-    #         # print(prompt[i].reshape(B, H, W, -1).shape,158)
-    #         x = prompt[i].reshape(B, H, W, -1)*temperature + x
-    #         x = blk(x)
-    #         # if i in self.out_indices:
-    #             # output_embeddings.append(x.permute(0, 3, 1, 2))
-    #     x = self.neck(x.permute(0, 3, 1, 2))
-    #     # output_embeddings.append(x)
-    #     # return x
-    #     return x
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor,temperature =1 ) -> torch.Tensor:
         inp = x
         x = self.patch_embed(x)
         embedding_feature = self.prompt_generator.init_embeddings(x)  #simple embedding_generator(x)
@@ -176,8 +153,9 @@ class ImageEncoderViT(nn.Module):
             inter_features.append(x)
 
         x = self.neck(x.permute(0, 3, 1, 2))
+        return x
 
-        return x, inter_features
+
 def to_2tuple(x):
     if isinstance(x, container_abcs.Iterable):
         return x

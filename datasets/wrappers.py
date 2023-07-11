@@ -213,10 +213,6 @@ class TrainDataset(Dataset):
                                  std=[0.229, 0.224, 0.225]),
             ])
 
-        # self.mask_transform = transforms.Compose([
-        #         transforms.ToTensor(),
-        #     ])
-
     def __len__(self):
         return len(self.dataset)
 
@@ -240,10 +236,30 @@ class TrainDataset(Dataset):
         if mask.max()!=1:
             mask=np.where(mask==0,0,1)
         img = self.img_transform(img)
-        mask = torch.tensor(mask).float()
-        if len(mask.shape) ==2:
-            mask= mask.unsqueeze(0)
 
+
+
+
+
+        mask = torch.tensor(mask).float()
+
+        boxes = torchvision.ops.masks_to_boxes(torch.tensor(mask).unsqueeze(0))[0]
+        boxes = boxes.unsqueeze(0)
+        obj_ids = np.unique(mask)
+        obj_ids = obj_ids[1:]
+        num_objs = len(obj_ids)
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+        image_id = torch.tensor([idx])
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["masks"] = mask.unsqueeze(2).repeat(1,1,3)
+        target["image_id"] = image_id
+        target["area"] = area
+        target["iscrowd"] = iscrowd
         # print(mask.min(),mask.max(),'line4')
         # img = np.array(img)
         # mask = np.array(mask)
@@ -279,7 +295,8 @@ class TrainDataset(Dataset):
         # plt.imshow(roi_mask.permute(1, 2, 0))
         # plt.show()
         # print(img.mean(),img.max(),img.min())
-
-        return {'inp':img,'gt':mask}
+        if len(mask.shape) == 2:
+            mask = mask.unsqueeze(0)
+        return {'inp':img,'gt':mask,'rcnn_targets':target}
 
         # return {'inp':inp,'gt':gt,'roi_input':roi_input,'roi_mask':roi_mask,'roi_box':torch.tensor([x1, y1, x2, y2]),'roi_size':torch.tensor(roi_size)}

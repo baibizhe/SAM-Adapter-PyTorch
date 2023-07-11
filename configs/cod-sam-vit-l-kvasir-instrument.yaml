@@ -14,7 +14,7 @@ train_dataset:
   batch_size: 1
 val_datasets:
   val_datasets_num: 1
-  val_datasets_name: ['kvasir']
+  val_datasets_name: ['kvasir-instru']
   val_dataset1:
     dataset:
       name: paired-image-folders

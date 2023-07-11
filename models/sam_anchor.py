@@ -21,7 +21,6 @@ from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from models import register
 from obj.eval_mask_rcnn_on_UDIATB.run import get_instance_segmentation_model
 from .mmseg.models.sam import ImageEncoderViT, MaskDecoder, TwoWayTransformer
-from .mmseg.models.sam.image_encoder_adapter import ImageEncoderViT_adapter
 from .mmseg.models.sam.image_encoder_anchor import ImageEncoderViT_anchor
 from .roi_head_custom import RoIHeads_custom
 from .transforms import ResizeLongestSide

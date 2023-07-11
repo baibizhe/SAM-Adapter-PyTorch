@@ -16,7 +16,6 @@ from torch.cuda.amp import autocast as autocast
 from models import register
 from obj.eval_mask_rcnn_on_UDIATB.run import get_instance_segmentation_model
 from .mmseg.models.sam import ImageEncoderViT, MaskDecoder, TwoWayTransformer
-from .mmseg.models.sam.image_encoder_adapter import ImageEncoderViT_adapter
 from .mmseg.models.sam.image_encoder_anchor import ImageEncoderViT_anchor
 from .transforms import ResizeLongestSide
 

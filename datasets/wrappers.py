@@ -236,22 +236,22 @@ class TrainDataset(Dataset):
         if mask.max()!=1:
             mask=np.where(mask==0,0,1)
         img = self.img_transform(img)
-
-
-
-
-
         mask = torch.tensor(mask).float()
-
-        boxes = torchvision.ops.masks_to_boxes(torch.tensor(mask).unsqueeze(0))[0]
-        boxes = boxes.unsqueeze(0)
+        if mask.max() ==0:
+            boxes = torch.zeros(size=(0,4))
+            boxes = boxes.unsqueeze(0)
+            area = 0
+        else:
+            boxes = torchvision.ops.masks_to_boxes(torch.tensor(mask).unsqueeze(0))[0]
+            boxes = boxes.unsqueeze(0)
+            area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        # print(np.unique(mask))
         obj_ids = np.unique(mask)
         obj_ids = obj_ids[1:]
         num_objs = len(obj_ids)
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         labels = torch.ones((num_objs,), dtype=torch.int64)
         image_id = torch.tensor([idx])
-        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
         target = {}
         target["boxes"] = boxes

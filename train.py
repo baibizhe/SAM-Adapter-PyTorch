@@ -196,6 +196,8 @@ def train(train_loader, model,temperature):
     loss_dict= {}
     total_samples = 0
     for batch in train_loader:
+        if len(torch.unique(batch['rcnn_targets']['masks'])) ==1:
+            continue
         for k, v in batch.items():
             if isinstance(v,torch.Tensor):
                 batch[k] = v.to(device, non_blocking=True)
@@ -307,8 +309,8 @@ def main(config_, save_path, args):
         epoch_m_dice = 0
         epoch_m_iou = 0
         total_samples = 0
-        # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        if (epoch_val is not None) and (epoch >= 3 )  and (epoch%1 ==0) :
+        if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
+        # if (epoch_val is not None) and (epoch >= 3 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,

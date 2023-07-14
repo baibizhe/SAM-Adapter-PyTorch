@@ -322,7 +322,22 @@ class SAM_anchor(SAM):
         _, H, W = self.gt_mask[0].shape
 
         self.features, features_multilayers = self.image_encoder(self.input)
+        # for f in features_multilayers:
+        #     print(str(f.shape))
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+        # torch.Size([1, 64, 64, 768])
+
         fused_features_multilayers = self.obj_neck(features_multilayers)
+
         fused_features_multilayers = OrderedDict([(0, fused_features_multilayers[0]),
                                 (1, fused_features_multilayers[1]),
                                 (2, fused_features_multilayers[2]),
@@ -339,10 +354,16 @@ class SAM_anchor(SAM):
 
 
         proposals, proposal_losses = self.obj_rpn(images, fused_features_multilayers, targets)
+        # for i in proposals:
+        #     if self.check_tensor(i):
+        #         print(i,359)
+        # try:
         detections, detector_losses = self.obj_roi_heads(fused_features_multilayers, proposals, images.image_sizes, targets)
+        # except:
+        #     print(proposals,images.image_sizes,targets)
         detections = self.rcnn_transform.postprocess(detections, images.image_sizes, images.image_sizes)
         # print(detections)
-
+        # self.check_tensor_dict(detections[0])
         self.obj_losses = {}
         self.obj_losses.update(detector_losses)
         self.obj_losses.update(proposal_losses)
@@ -370,7 +391,28 @@ class SAM_anchor(SAM):
         self.input = input
         self.gt_mask = gt_mask
         self.rcnn_targets = rcnn_targets
+
+    def check_tensor_dict(self,dict_tensor):
+        for key, value in dict_tensor.items():
+            if torch.isnan(value).any():
+                print("Tensor contains NaN values.")
+                print(f"Checking tensor: {key}")
+            if torch.isinf(value).any():
+                print("Tensor contains Inf values.")
+                print(f"Checking tensor: {key}")
+
+
+    def check_tensor(self,tensor):
+        if torch.isnan(tensor).any():
+            print("Tensor contains NaN values.")
+            return  True
+        if torch.isinf(tensor).any():
+            print("Tensor contains Inf values.")
+            return  True
+        return  False
+
     def backward_G(self):
+
         self.loss_G = self.criterionBCE(self.pred_mask, self.gt_mask)
         if self.loss_mode == 'iou':
             self.loss_G += _iou_loss(self.pred_mask, self.gt_mask)

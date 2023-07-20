@@ -25,7 +25,32 @@ freqnums=0.25
 
 
 #
-#Kvasir-SEG 10%
+##Kvasir-SEG 10%
+#for lr  in  0.0005
+#do
+#  for fold  in 1
+#  do
+#    echo lr $lr   $fold
+#    /home/ubuntu/anaconda3/envs/samEnv/bin/python /home/ubuntu/anaconda3/envs/samEnv/lib/python3.8/site-packages/torch/distributed/launch.py --nnodes 1 --nproc_per_node 1 \
+#    /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/train.py  \
+#    --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-b-kvasir-seg.yaml \
+#    --lr $lr \
+#    --freqnums $freqnums \
+#    --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P10/imgs \
+#    --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P10/labels \
+#    --val_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P90/imgs \
+#    --val_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P90/labels \
+#    --epoch_max 80 ;
+##        --val_img_w 352 \
+##    --val_img_h 352 \
+#  done
+#done
+
+
+
+
+
+#Kvasir-SEG 20%
 for lr  in  0.0005
 do
   for fold  in 1
@@ -33,46 +58,21 @@ do
     echo lr $lr   $fold
     /home/ubuntu/anaconda3/envs/samEnv/bin/python /home/ubuntu/anaconda3/envs/samEnv/lib/python3.8/site-packages/torch/distributed/launch.py --nnodes 1 --nproc_per_node 1 \
     /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/train.py  \
-    --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-b-kvasir-seg.yaml \
+    --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-anchor-b-kvasir-seg.yaml \
     --lr $lr \
     --freqnums $freqnums \
-    --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P10/imgs \
-    --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P10/labels \
-    --val_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P90/imgs \
-    --val_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split1090/fold${fold}/P90/labels \
+    --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P20/imgs \
+    --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P20/labels \
+    --val_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P80/imgs \
+    --val_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P80/labels \
     --epoch_max 80 ;
-#        --val_img_w 352 \
-#    --val_img_h 352 \
+
+#    --val_img_w 768 \
+#    --val_img_h 768 \
   done
 done
 
 
-
-#
-#
-##Kvasir-SEG 20%
-#for lr  in  0.0005
-#do
-#  for fold  in 1 3
-#  do
-#    echo lr $lr   $fold
-#    /home/ubuntu/anaconda3/envs/samEnv/bin/python /home/ubuntu/anaconda3/envs/samEnv/lib/python3.8/site-packages/torch/distributed/launch.py --nnodes 1 --nproc_per_node 1 \
-#    /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/train.py  \
-#    --config  /home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-l-kvasir-seg.yaml \
-#    --lr $lr \
-#    --freqnums $freqnums \
-#    --train_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P20/imgs \
-#    --train_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P20/labels \
-#    --val_img_dir /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P80/imgs \
-#    --val_label_dir  /home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split2080/fold${fold}/P80/labels \
-#    --epoch_max 80 ;
-#
-##    --val_img_w 768 \
-##    --val_img_h 768 \
-#  done
-#done
-#
-#
 
 
 

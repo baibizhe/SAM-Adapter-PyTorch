@@ -493,7 +493,7 @@ class SAM(nn.Module):
         masks = self.postprocess_masks(low_res_masks, self.inp_size, self.inp_size)
         self.pred_mask = masks
 
-    def infer(self, input,tempature=1):
+    def infer(self, input,tempature=1,gt_original_cpu=None):
         bs = 1
         # Embed prompts
         sparse_embeddings = self.get_sparse_emb(bs,input)

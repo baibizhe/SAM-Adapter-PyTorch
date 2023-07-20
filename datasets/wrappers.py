@@ -4,6 +4,7 @@ import random
 import math
 import warnings
 
+import matplotlib.pyplot as plt
 from PIL import Image
 
 import numpy as np
@@ -163,6 +164,11 @@ class ValDataset(Dataset):
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
             ])
+        self.ToTensor = transforms.Compose([
+                transforms.Resize((inp_size, inp_size)),
+                transforms.ToTensor(),
+
+            ])
         self.mask_transform = transforms.Compose([
             transforms.Resize((inp_size, inp_size)),
             transforms.ToTensor(),
@@ -175,8 +181,8 @@ class ValDataset(Dataset):
         img, mask = self.dataset[idx]
         mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(mask)
         mask = np.array(mask)
-        if mask.max()!=1:
-            mask=np.where(mask==0,0,1)
+        mask = self.process_mask(mask)
+        inp_notnormalize = self.ToTensor(img)
         mask = torch.tensor(mask).float()
         if len(mask.shape) ==2:
             mask= mask.unsqueeze(0)
@@ -184,7 +190,27 @@ class ValDataset(Dataset):
         return {
             'inp': img,
             'gt': mask,
+            'inp_notnormalize':inp_notnormalize
         }
+
+    def process_mask(self, mask: np.ndarray):
+        if mask.max() != 1:
+            mask = np.where(mask == 0, 0, 1)
+        return mask
+
+
+@register('val_CaDISv2')
+class ValDataset_CaDISv2(ValDataset):
+    def __init__(self, dataset, inp_size=None, augment=False):
+
+        super().__init__(dataset, inp_size, augment)
+    def process_mask(self, mask: np.ndarray):
+        # print('process_masks val_CaDISv2 ')
+
+        mask = np.where(np.logical_and(np.greater_equal(mask, 7), np.less_equal(mask, 35)), 1, 0)
+        return mask
+
+
 
 
 @register('train')
@@ -233,8 +259,9 @@ class TrainDataset(Dataset):
         mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(mask)
         img= np.array(img)
         mask = np.array(mask)
-        if mask.max()!=1:
-            mask=np.where(mask==0,0,1)
+        mask = self.process_masks(mask)
+        # plt.imshow(mask)
+        # plt.show()
         img = self.img_transform(img)
         mask = torch.tensor(mask).float()
         if mask.max() ==0:
@@ -300,3 +327,19 @@ class TrainDataset(Dataset):
         return {'inp':img,'gt':mask,'rcnn_targets':target}
 
         # return {'inp':inp,'gt':gt,'roi_input':roi_input,'roi_mask':roi_mask,'roi_box':torch.tensor([x1, y1, x2, y2]),'roi_size':torch.tensor(roi_size)}
+
+    def process_masks(self, mask):
+        if mask.max() != 1:
+            mask = np.where(mask == 0, 0, 1)
+        return mask
+@register('train_CaDISv2')
+class TrainDataset_CaDISv2(TrainDataset):
+    def __init__(self, dataset, size_min=None, size_max=None, inp_size=None,
+                 augment=False, gt_resize=None):
+        super().__init__(dataset, size_min, size_max, inp_size,
+                 augment, gt_resize)
+    def process_masks(self, mask):
+        # print(np.unique(mask))
+        # print('process_masks train_CaDISv2')
+        mask = np.where(np.logical_and(np.greater_equal(mask, 7), np.less_equal(mask, 35)), 1, 0)
+        return mask

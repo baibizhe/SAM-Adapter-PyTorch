@@ -65,13 +65,31 @@ def compute_dice_coefficient(mask_gt, mask_pred):
     Returns:
       the dice coeffcient as float. If both masks are empty, the result is NaN
     """
+    eps = 1e-7
+    mask_gt = torch.where(torch.isnan(mask_gt), torch.zeros_like(mask_gt), mask_gt)
+    mask_pred = torch.where(torch.isnan(mask_pred), torch.zeros_like(mask_pred), mask_pred)
     volume_sum = mask_gt.sum() + mask_pred.sum()
     if volume_sum == 0:
-        return np.NaN
+        return 1
     volume_intersect = (mask_gt & mask_pred).sum()
 
-    return 2 * volume_intersect / volume_sum
+    return (2 * volume_intersect + eps) / (volume_sum +eps)
+def mean_iou_fun(y_true, y_pred, eps=1e-7):
+    # Flatten tensor and remove nan values
+    y_true = torch.where(torch.isnan(y_true), torch.zeros_like(y_true), y_true)
+    y_pred = torch.where(torch.isnan(y_pred), torch.zeros_like(y_pred), y_pred)
+    y_true = y_true.view(-1).int()
+    y_pred = y_pred.view(-1).int()
 
+    # Calculate IoU
+    intersection = torch.sum(y_true * y_pred)
+    union = torch.sum(y_true) + torch.sum(y_pred) - intersection
+
+    # Avoid division by zero
+    if union == 0:
+        return torch.tensor(1.0)
+
+    return (intersection + eps) / (union + eps)
 def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
     model.eval()
 
@@ -86,13 +104,13 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
     gt_list = []
     dice_result=0
     total_num_samples = 0
-    jaccard_fun=torchmetrics.JaccardIndex(task='binary', num_classes=2)
+    # jaccard_fun=torchmetrics.JaccardIndex(task='binary', num_classes=2)
+    jaccard_fun = mean_iou_fun
     jaccard_score = 0
     desired_w = args.val_img_w
     desired_h = args.val_img_h
     count  = 0
-    warnings.warn(
-        'this design is spefic for kvasir .which original design might end up with some val images contains in traning imges')
+    # torch.autograd.set_detect_anomaly(True)
     with torch.no_grad():
         for idx,batch in enumerate(loader):
             count+=1
@@ -111,7 +129,6 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
                 pred = torch.sigmoid(model.infer(inp,temperature,None))
 
             total_num_samples += pred.shape[0]
-            # print(pred.min(),pred.max(),gt_original_cpu.min(),gt_original_cpu.max())
 
             if pbar is not None:
                 pbar.update(1)
@@ -124,12 +141,19 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
 
             pred_desired = torch.where(pred_desired < 0.5, 0, 1)
             target_desized = torch.where(target_desized < 0.5, 0, 1)
+            # print(pred_desired.min(),pred_desired.max(),pred_desired,target_desized.min(),target_desized.max(),target_desized)
+
+            # print(pred_desired.max(),target_desized.max(),127)
             dice_result+=compute_dice_coefficient(pred_desired[:,0,:,].unsqueeze(1)>0,target_desized>0 )
+            # print(dice_result,compute_dice_coefficient(pred_desired[:,0,:,].unsqueeze(1)>0,target_desized>0 ),'dice')
             jaccard_score+=jaccard_fun(pred_desired[:,0,:,].unsqueeze(1).cpu()>0,target_desized.cpu()>0)
+            # print(jaccard_score,jaccard_fun(pred_desired[:,0,:,].unsqueeze(1).cpu()>0,target_desized.cpu()>0),'miou')
+
             # print(pred_desired.shape,target_desized.shape,gt_original_cpu.shape,pred.shape)
 
             if idx < 10:
-                writer.add_images(tag=f"images/{idx}/valid_input_images", img_tensor=inp.cpu().numpy(),
+
+                writer.add_images(tag=f"images/{idx}/valid_input_images", img_tensor=batch['inp_notnormalize'],
                                   global_step=epcoh)
                 writer.add_images(tag=f"images/{idx}/valid_predicte_1024_result", img_tensor=(pred>0.5).cpu().detach().numpy(),
                                   global_step=epcoh)
@@ -137,8 +161,8 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
                                   global_step=epcoh)
                 writer.add_images(tag=f"images/{idx}/valid_label_images", img_tensor=batch['gt'].cpu().numpy(),
                                   global_step=epcoh)
-            # if count >200:
-            #     break
+            if count >args.eval_num:
+                break
     if pbar is not None:
         pbar.close()
 
@@ -310,7 +334,7 @@ def main(config_, save_path, args):
         epoch_m_iou = 0
         total_samples = 0
         if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        # if (epoch_val is not None) and (epoch >= 3 )  and (epoch%1 ==0) :
+        # if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
@@ -400,6 +424,7 @@ if __name__ == '__main__':
     parser.add_argument("--val_img_w", type=int)
     parser.add_argument("--val_img_h", type=int)
     parser.add_argument("--epoch_max", type=int, default=30, help="")
+    parser.add_argument("--eval_num", type=int, default=200000)
 
     torch.cuda.manual_seed_all(2)
     torch.manual_seed(2)

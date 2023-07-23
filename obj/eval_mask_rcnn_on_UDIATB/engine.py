@@ -30,9 +30,11 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
         try:
             images = list(image.to(device) for image in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
-            loss_dict = model(images, targets)
-
+            try:
+                loss_dict = model(images, targets)
+            except :
+                print('loss exception')
+                continue
             losses = sum(loss for loss in loss_dict.values())
 
             # reduce losses over all GPUs for logging purposes

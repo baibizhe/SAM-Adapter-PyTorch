@@ -174,13 +174,17 @@ def convert_to_coco_api(ds):
         num_objs = len(bboxes)
         for i in range(num_objs):
             ann = {}
-            ann['image_id'] = image_id
-            ann['bbox'] = bboxes[i]
-            ann['category_id'] = labels[i]
-            categories.add(labels[i])
-            ann['area'] = areas[i]
-            ann['iscrowd'] = iscrowd[i]
-            ann['id'] = ann_id
+            try:
+                ann['image_id'] = image_id
+                ann['bbox'] = bboxes[i]
+                ann['category_id'] = labels[i]
+                categories.add(labels[i])
+                ann['area'] = areas[i]
+                ann['iscrowd'] = iscrowd[i]
+                ann['id'] = ann_id
+            except:
+                print('coco except')
+                continue
             if 'masks' in targets:
                 ann["segmentation"] = coco_mask.encode(masks[i].numpy())
             if 'keypoints' in targets:

@@ -36,6 +36,65 @@ def get_instance_segmentation_model(num_classes, pretrained, state_dict):
     return model
 
 
+# def get_customized_model(num_classes, pretrained=False, state_dict=None):
+#     '''
+#     get a mask rcnn model
+#     parameters:
+#         num_classes: instance class, including background
+#         pretrained: whether to load ImageNet pretrained parameters
+#         state_dict: self/semi-supervised pretrained parameters path
+#     '''
+#     # backbone = resnet50_fpn_backbone(pretrained, state_dict)
+#     # backbone = resnet18_fpn_backbone(pretrained, state_dict)
+#
+#     with open('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-anchor-b-kvasir-seg.yaml', 'r') as f:
+#         config = yaml.load(f, Loader=yaml.FullLoader)
+#
+#     sam = models.make(config['model']).cuda()
+#     # for name, para in sam.named_parameters():
+#     #     para.requires_grad_(False)
+#     for name, para in sam.named_parameters():
+#         if "image_encoder" in name and "prompt_generator" not in name:
+#             para.requires_grad_(False)
+#     backbone =sam.image_encoder
+#     backbone.out_channels = 256
+#
+#     # backbone =VIT_fpn_backbone(backbone,None)
+#     roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0,1,2,3],
+#                                                     output_size=7,
+#                                                     sampling_ratio=2)
+#     model = FasterRCNN(backbone,min_size=1024,max_size=1024,
+#                        num_classes=num_classes,
+#                        box_roi_pool=roi_pooler
+#                        # rpn_anchor_generator=AnchorGenerator(sizes=((128, 256, 512),))
+#                        # box_roi_pool=None,
+#                        )
+#     # print(model)
+#     print('created model')
+#     return model
+
+
+def get_instance_segmentation_model(num_classes, pretrained, state_dict):
+    # load an instance segmentation model pre-trained on COCO/USCL
+    model = get_customized_model(num_classes, pretrained, state_dict)
+
+    # get the number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    # now get the number of input features for the mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256
+
+    # and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
+                                                       hidden_layer,
+                                                       num_classes)
+    return model
+
+
 def get_customized_model(num_classes, pretrained=False, state_dict=None):
     '''
     get a mask rcnn model
@@ -44,33 +103,22 @@ def get_customized_model(num_classes, pretrained=False, state_dict=None):
         pretrained: whether to load ImageNet pretrained parameters
         state_dict: self/semi-supervised pretrained parameters path
     '''
-    # backbone = resnet50_fpn_backbone(pretrained, state_dict)
-    # backbone = resnet18_fpn_backbone(pretrained, state_dict)
+    backbone = resnet18_fpn_backbone(pretrained, state_dict)
 
-    with open('/home/ubuntu/works/code/working_proj/SAM-Adapter-PyTorch/configs/cod-sam-vit-anchor-b-kvasir-seg.yaml', 'r') as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-
-    sam = models.make(config['model']).cuda()
-    # for name, para in sam.named_parameters():
-    #     para.requires_grad_(False)
-    for name, para in sam.named_parameters():
-        if "image_encoder" in name and "prompt_generator" not in name:
-            para.requires_grad_(False)
-    backbone =sam.image_encoder
     backbone.out_channels = 256
-
-    # backbone =VIT_fpn_backbone(backbone,None)
-    roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0,1,2,3],
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0, 1, 2, 3],
                                                     output_size=7,
                                                     sampling_ratio=2)
-    model = FasterRCNN(backbone,min_size=1024,max_size=1024,
-                       num_classes=num_classes,
-                       box_roi_pool=roi_pooler
-                       # rpn_anchor_generator=AnchorGenerator(sizes=((128, 256, 512),))
-                       # box_roi_pool=None,
-                       )
-    # print(model)
-    print('created model')
+
+    mask_roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=[0, 1, 2, 3],
+                                                         output_size=14,
+                                                         sampling_ratio=2)
+    # put the pieces together inside a MaskRCNN model
+    model = MaskRCNN(backbone,
+                     num_classes=num_classes,
+                     box_roi_pool=roi_pooler,
+                     mask_roi_pool=mask_roi_pooler)
+
     return model
 
 
@@ -155,8 +203,8 @@ if __name__ == '__main__':
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/pra_net_dataset/TrainDataset/split4951/fold1/P49', help='path of data')
     # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/Kvasir-SEG/split4060/fold1/P40', help='path of data')
-    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P20', help='path of data')
-    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/kvasir-instrument/split2080/fold1/P80', help='path of data')
+    parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/CaDISv2/split1090/fold1/P10', help='path of data')
+    parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/CaDISv2/split1090/fold1/P90', help='path of data')
     # parser.add_argument('-dd', '--dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/traning/split2080/fold1/P20', help='path of data')
     # parser.add_argument('-td', '--test_dataset_dir', default='/home/ubuntu/works/code/working_proj/segment-anything/data/endovis_instrument_data/endovis19/test/Stage_3', help='path of data')
 

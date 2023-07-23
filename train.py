@@ -282,21 +282,20 @@ def main(config_, save_path, args):
     model = model.module
 
     sam_checkpoint = torch.load(config['sam_checkpoint'])
-    obj_params = []
-    for name, para in model.named_parameters():
-        if "obj" in name:
-            obj_params.append(para)
 
     # obj_optimizer = torch.optim.SGD(obj_params, lr=0.005,  # 一般模型0.005学习率对于batchsize=1太大，容易loss=nan，但是学习率小了又会性能下降明显
     #                             momentum=0.9, weight_decay=0.0005)
     # model.obj_optimizer =obj_optimizer
     model.load_state_dict(sam_checkpoint, strict=False)
+    if config['model'].get('full_fine_tune',False):
+        print('full fine tune')
+    else:
+        for name, para in model.named_parameters():
+            if "image_encoder" in name and "prompt_generator" not in name:
+                para.requires_grad_(False)
     for name, para in model.named_parameters():
-        if "image_encoder" in name and "prompt_generator" not in name:
-            para.requires_grad_(False)
-    # for name, para in model.named_parameters():
-    #     if para.requires_grad:
-    #         print(name)
+        if para.requires_grad:
+            print(name)
     if local_rank == 0:
         model_total_params = sum(p.numel() for p in model.parameters())
         model_grad_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -333,8 +332,8 @@ def main(config_, save_path, args):
         epoch_m_dice = 0
         epoch_m_iou = 0
         total_samples = 0
-        if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        # if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
+        # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
+        if (epoch_val is not None) and (epoch >= 5 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
@@ -449,7 +448,6 @@ if __name__ == '__main__':
         config['val_datasets']['val_dataset1']['dataset']['args']['root_path_2'] = args.val_label_dir
     config['epoch_max'] = args.epoch_max
     print(args)
-
     save_name = args.name
     if save_name is None:
         save_name = '_' + args.config.split('/')[-1][:-len('.yaml')]

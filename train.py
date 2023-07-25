@@ -110,6 +110,8 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
     desired_w = args.val_img_w
     desired_h = args.val_img_h
     count  = 0
+    dice_list = []
+    iou_list = []
     # torch.autograd.set_detect_anomaly(True)
     with torch.no_grad():
         for idx,batch in enumerate(loader):
@@ -141,15 +143,14 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
 
             pred_desired = torch.where(pred_desired < 0.5, 0, 1)
             target_desized = torch.where(target_desized < 0.5, 0, 1)
-            # print(pred_desired.min(),pred_desired.max(),pred_desired,target_desized.min(),target_desized.max(),target_desized)
+            cur_dice = compute_dice_coefficient(pred_desired[:,0,:,].unsqueeze(1)>0,target_desized>0 )
+            append_metrics_to_list(cur_dice, dice_list)
 
-            # print(pred_desired.max(),target_desized.max(),127)
-            dice_result+=compute_dice_coefficient(pred_desired[:,0,:,].unsqueeze(1)>0,target_desized>0 )
+            dice_result+=cur_dice
             # print(dice_result,compute_dice_coefficient(pred_desired[:,0,:,].unsqueeze(1)>0,target_desized>0 ),'dice')
-            jaccard_score+=jaccard_fun(pred_desired[:,0,:,].unsqueeze(1).cpu()>0,target_desized.cpu()>0)
-            # print(jaccard_score,jaccard_fun(pred_desired[:,0,:,].unsqueeze(1).cpu()>0,target_desized.cpu()>0),'miou')
-
-            # print(pred_desired.shape,target_desized.shape,gt_original_cpu.shape,pred.shape)
+            cur_iou = jaccard_fun(pred_desired[:,0,:,].unsqueeze(1).cpu()>0,target_desized.cpu()>0)
+            append_metrics_to_list(cur_iou,iou_list)
+            jaccard_score+=cur_iou
 
             if idx < 10:
 
@@ -168,7 +169,16 @@ def eval_segment(loader, model, args,writer=None,epcoh=0,temperature=1):
 
     dice_result  = dice_result/total_num_samples
     jaccard_score = jaccard_score/total_num_samples
-    return  dice_result,jaccard_score,np.array(0),np.array(0),metric1,metric2,'none','none'
+    return  dice_result,jaccard_score,metric1,metric2,dice_list,iou_list
+
+
+def append_metrics_to_list(cur_dice, dice_list):
+    if isinstance(cur_dice, torch.Tensor):
+        dice_list.append(cur_dice.item())
+    else:
+        dice_list.append(cur_dice)
+
+
 def prepare_training():
     if config.get('resume') is not None:
         model = models.make(config['model']).cuda()
@@ -309,7 +319,7 @@ def main(config_, save_path, args):
     epoch_val = config.get('epoch_val')
     timer = utils.Timer()
     early_stop_e = 0
-    early_stop_e_max = 50
+    early_stop_e_max = 100
     best_dice =0
     assert len(val_loaders) == len(val_datasets_name),'assert len(val_loaders) == len(val_datasets_name)'
     temperature =1
@@ -338,11 +348,11 @@ def main(config_, save_path, args):
         epoch_m_dice = 0
         epoch_m_iou = 0
         total_samples = 0
-        if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        # if (epoch_val is not None) and (epoch >= 5 )  and (epoch%1 ==0) :
+        # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
+        if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
             for val_loader_idx in range(len(val_loaders)):
-                dice_cur, iou_cur, result3, result4, metric1, metric2, metric3, metric4 = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
+                dice_cur, iou_cur, metric1, metric2, dice_list,iou_list = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
                     temperature=temperature)
                 d_name = val_datasets_name[val_loader_idx]
                 epoch_m_dice+=dice_cur*len(val_loaders[val_loader_idx].dataset)
@@ -354,7 +364,16 @@ def main(config_, save_path, args):
                     log_info.append(' {}={:.4f}'.format(metric2, iou_cur))
                     writer.add_scalar(f'val_{d_name}_' + metric2, iou_cur, epoch)
                     log_info.append('\n')
+                if epoch_m_dice > best_dice:
+                            best_dice = epoch_m_dice
+                            early_stop_e = 0
+                            print('dice list',dice_list)
+                            print('iou list',iou_list)
 
+                else:
+                    early_stop_e+=1
+                    if early_stop_e >early_stop_e_max:
+                        break
 
             epoch_m_iou /= total_samples
             epoch_m_dice /= total_samples
@@ -365,13 +384,7 @@ def main(config_, save_path, args):
 
             writer.add_scalar(f'val_epoch_m_iou_' , epoch_m_iou, epoch)
             writer.add_scalar(f'val_epoch_m_dice_', epoch_m_dice, epoch)
-            if epoch_m_dice > best_dice:
-                        best_dice = epoch_m_dice
-                        early_stop_e = 0
-            else:
-                early_stop_e+=1
-                if early_stop_e >early_stop_e_max:
-                    break
+
 
 
         t = timer.t()

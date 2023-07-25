@@ -583,11 +583,24 @@ class SAM(nn.Module):
         self.loss_info_dict['total loss'] = self.loss_G
         self.loss_G.backward()
 
+    def clip_gradient(self,optimizer, grad_clip):
+        """
+        For calibrating misalignment gradient via cliping gradient technique
+        :param optimizer:
+        :param grad_clip:
+        :return:
+        """
+        for group in optimizer.param_groups:
+            for param in group['params']:
+                if param.grad is not None:
+                    param.grad.data.clamp_(-grad_clip, grad_clip)
     def optimize_parameters(self):
         self.forward(1)
 
         self.optimizer.zero_grad()  # set G's gradients to zero
         self.backward_G()  # calculate graidents for G
+        self.clip_gradient(self.optimizer, 0.5)
+
         self.optimizer.step()  # udpate G's weights
 
     def set_requires_grad(self, nets, requires_grad=False):

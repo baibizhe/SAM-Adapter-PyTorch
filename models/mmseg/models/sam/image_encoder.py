@@ -149,6 +149,7 @@ class ImageEncoderViT(nn.Module):
 
         for i,blk in enumerate(self.blocks):
             x = prompt[i].reshape(B, H, W, -1) + x
+            # warnings.warn('this is version wo  fft')
             x = blk(x)
             inter_features.append(x)
 

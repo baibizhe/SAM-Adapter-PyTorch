@@ -441,6 +441,8 @@ class SAM_anchor(SAM):
         self.optimizer.zero_grad()
 
         self.backward_G()  # calculate graidents for G
+        self.clip_gradient(self.optimizer, 0.5)
+
         self.optimizer.step()  # udpate G's weights
 
     def infer(self, input,tempature=1,gt_original_cpu=None):

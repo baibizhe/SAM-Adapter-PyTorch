@@ -19,105 +19,6 @@ from math import pi
 from torchvision.transforms import InterpolationMode
 from torchvision.ops import masks_to_boxes
 
-#
-# import torch.nn.functional as F
-# def to_mask(mask):
-#     return transforms.ToTensor()(
-#         transforms.Grayscale(num_output_channels=1)(
-#             transforms.ToPILImage()(mask)))
-#
-#
-# def resize_fn(img, size):
-#     return transforms.ToTensor()(
-#         transforms.Resize(size)(
-#             transforms.ToPILImage()(img)))
-#
-#
-# @register('val')
-# class ValDataset(Dataset):
-#     def __init__(self, dataset, inp_size=None, augment=False):
-#         self.dataset = dataset
-#         self.inp_size = inp_size
-#         self.augment = augment
-#         warnings.warn('this is val folder')
-#
-#         self.img_transform = transforms.Compose([
-#                 transforms.Resize((inp_size, inp_size)),
-#
-#                 transforms.ToTensor(),
-#                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
-#                                      std=[0.229, 0.224, 0.225])
-#             ])
-#         self.mask_transform = transforms.Compose([
-#             transforms.Resize((inp_size, inp_size)),
-#             transforms.ToTensor(),
-#             ])
-#
-#     def __len__(self):
-#         return len(self.dataset)
-#
-#     def __getitem__(self, idx):
-#         img, mask = self.dataset[idx]
-#         return {
-#             'inp': self.img_transform(img),
-#             'gt': self.mask_transform(mask),
-#         }
-#
-#
-# @register('train')
-# class TrainDataset(Dataset):
-#     def __init__(self, dataset, size_min=None, size_max=None, inp_size=None,
-#                  augment=False, gt_resize=None):
-#         self.dataset = dataset
-#         self.size_min = size_min
-#         if size_max is None:
-#             size_max = size_min
-#         self.size_max = size_max
-#         self.augment = augment
-#         self.gt_resize = gt_resize
-#
-#         self.inp_size = inp_size
-#         self.normalize = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406],
-#                                      std=[0.229, 0.224, 0.225])])
-#         self.img_transform = transforms.Compose([
-#                 transforms.Resize((self.inp_size, self.inp_size)),
-#                 transforms.RandomRotation(90),
-#                 transforms.RandomChoice([
-#                     transforms.RandomVerticalFlip(),
-#                     transforms.RandomHorizontalFlip(),
-#                 ]),
-#                 transforms.ToTensor(),
-#             ])
-#         # self.inverse_transform = transforms.Compose([
-#         #         transforms.Normalize(mean=[0., 0., 0.],
-#         #                              std=[1/0.229, 1/0.224, 1/0.225]),
-#         #         transforms.Normalize(mean=[-0.485, -0.456, -0.406],
-#         #                              std=[1, 1, 1])
-#         #     ])
-#         self.mask_transform = transforms.Compose([
-#                 transforms.Resize((self.inp_size, self.inp_size)),
-#                 transforms.ToTensor(),
-#             ])
-#
-#     def __len__(self):
-#         return len(self.dataset)
-#
-#     def __getitem__(self, idx):
-#         img, mask = self.dataset[idx]
-#
-#         # random filp
-#         if random.random() < 0.5:
-#             img = img.transpose(Image.FLIP_LEFT_RIGHT)
-#             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
-#
-#
-#         img = transforms.Resize((self.inp_size, self.inp_size))(img)
-#         mask = transforms.Resize((self.inp_size, self.inp_size), interpolation=InterpolationMode.NEAREST)(mask)
-#
-#         return {
-#             'inp': self.normalize(self.img_transform(img)),
-#             'gt': self.img_transform(mask)
-#         }
 
 import functools
 import random
@@ -228,13 +129,12 @@ class TrainDataset(Dataset):
         self.inp_size = inp_size
         self.normalize = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])])
-        warnings.warn('using more augmentation')
         self.img_transform = transforms.Compose([
                 transforms.ToTensor(),
-                # transforms.GaussianBlur((75, 75), sigma=(0.001, 2.0)),
-                # transforms.ColorJitter(
-                #     brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01
-                # ),
+                transforms.GaussianBlur((75, 75), sigma=(0.001, 2.0)),
+                transforms.ColorJitter(
+                    brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01
+                ),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
             ])
@@ -260,8 +160,6 @@ class TrainDataset(Dataset):
         img= np.array(img)
         mask = np.array(mask)
         mask = self.process_masks(mask)
-        # plt.imshow(mask)
-        # plt.show()
         img = self.img_transform(img)
         mask = torch.tensor(mask).float()
         if mask.max() ==0:

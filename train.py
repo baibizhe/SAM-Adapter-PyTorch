@@ -263,8 +263,8 @@ def main(config_, save_path, args):
             'gt': {'sub': [0], 'div': [1]}
         }
     epoch_max, eval_per_epoch, start_eval_e = get_custom_epoch(len(train_loader.dataset))
-    if config['epoch_max']:
-        epoch_max = config['epoch_max']
+
+
     model, optimizer, epoch_start = prepare_training()
     model.optimizer = optimizer
     # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -283,10 +283,15 @@ def main(config_, save_path, args):
 
     sam_checkpoint = torch.load(config['sam_checkpoint'])
 
-    # obj_optimizer = torch.optim.SGD(obj_params, lr=0.005,  # 一般模型0.005学习率对于batchsize=1太大，容易loss=nan，但是学习率小了又会性能下降明显
-    #                             momentum=0.9, weight_decay=0.0005)
-    # model.obj_optimizer =obj_optimizer
     model.load_state_dict(sam_checkpoint, strict=False)
+    if config['epoch_max']:
+        epoch_max = config['epoch_max']
+    if args.start_eval_e:
+        start_eval_e = args.start_eval_e
+    print('epoch_max, eval_per_epoch, start_eval_e',epoch_max, eval_per_epoch, start_eval_e)
+    if args.resume_path:
+        warnings.warn("resume from"+args.resume_path)
+        model.load_state_dict(torch.load(args.resume_path))
     if config['model'].get('full_fine_tune',False):
         print('full fine tune')
     else:
@@ -300,6 +305,7 @@ def main(config_, save_path, args):
         model_total_params = sum(p.numel() for p in model.parameters())
         model_grad_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print('model_grad_params:' + str(model_grad_params), '\nmodel_total_params:' + str(model_total_params))
+
     epoch_val = config.get('epoch_val')
     timer = utils.Timer()
     early_stop_e = 0
@@ -424,6 +430,8 @@ if __name__ == '__main__':
     parser.add_argument("--val_img_h", type=int)
     parser.add_argument("--epoch_max", type=int, default=30, help="")
     parser.add_argument("--eval_num", type=int, default=200000)
+    parser.add_argument("--start_eval_e", type=int)
+    parser.add_argument("--resume_path", type=str)
 
     torch.cuda.manual_seed_all(2)
     torch.manual_seed(2)

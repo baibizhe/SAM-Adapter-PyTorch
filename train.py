@@ -348,32 +348,37 @@ def main(config_, save_path, args):
         epoch_m_dice = 0
         epoch_m_iou = 0
         total_samples = 0
-        # if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
-        if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
+        if (epoch_val is not None) and (epoch >= start_eval_e )  and (epoch%eval_per_epoch ==0) :
+        # if (epoch_val is not None) and (epoch >= 0 )  and (epoch%1 ==0) :
             torch.cuda.empty_cache()
+            dice_list_all=[]
+            iou_list_all=[]
             for val_loader_idx in range(len(val_loaders)):
                 dice_cur, iou_cur, metric1, metric2, dice_list,iou_list = eval_segment(val_loaders[val_loader_idx], model,args=args,writer=writer,epcoh=epoch,
                     temperature=temperature)
+                dice_list_all.extend(dice_list)
+                iou_list_all.extend(iou_list)
                 d_name = val_datasets_name[val_loader_idx]
                 epoch_m_dice+=dice_cur*len(val_loaders[val_loader_idx].dataset)
                 epoch_m_iou+=iou_cur*len(val_loaders[val_loader_idx].dataset)
                 total_samples+=len(val_loaders[val_loader_idx].dataset)
-                if local_rank == 0:
-                    log_info.append('val {}: {}={:.4f}'.format(d_name,metric1, dice_cur))
-                    writer.add_scalar(f'val_{d_name}_'+metric1,  dice_cur, epoch)
-                    log_info.append(' {}={:.4f}'.format(metric2, iou_cur))
-                    writer.add_scalar(f'val_{d_name}_' + metric2, iou_cur, epoch)
-                    log_info.append('\n')
-                if epoch_m_dice > best_dice:
-                            best_dice = epoch_m_dice
-                            early_stop_e = 0
-                            print('dice list',dice_list)
-                            print('iou list',iou_list)
-
-                else:
-                    early_stop_e+=1
-                    if early_stop_e >early_stop_e_max:
-                        break
+            if local_rank == 0:
+                log_info.append('val {}: {}={:.4f}'.format(d_name,metric1, dice_cur))
+                writer.add_scalar(f'val_{d_name}_'+metric1,  dice_cur, epoch)
+                log_info.append(' {}={:.4f}'.format(metric2, iou_cur))
+                writer.add_scalar(f'val_{d_name}_' + metric2, iou_cur, epoch)
+                log_info.append('\n')
+            if epoch_m_dice > best_dice:
+                        best_dice = epoch_m_dice
+                        early_stop_e = 0
+                        print('dice list',dice_list_all)
+                        print('iou list',iou_list_all)
+                        writer.add_text('iou_list',str(dice_list_all))
+                        writer.add_text('dice_list',str(iou_list_all))
+            else:
+                early_stop_e+=1
+                if early_stop_e >early_stop_e_max:
+                    break
 
             epoch_m_iou /= total_samples
             epoch_m_dice /= total_samples

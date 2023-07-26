@@ -362,12 +362,12 @@ def main(config_, save_path, args):
                 epoch_m_dice+=dice_cur*len(val_loaders[val_loader_idx].dataset)
                 epoch_m_iou+=iou_cur*len(val_loaders[val_loader_idx].dataset)
                 total_samples+=len(val_loaders[val_loader_idx].dataset)
-            if local_rank == 0:
-                log_info.append('val {}: {}={:.4f}'.format(d_name,metric1, dice_cur))
-                writer.add_scalar(f'val_{d_name}_'+metric1,  dice_cur, epoch)
-                log_info.append(' {}={:.4f}'.format(metric2, iou_cur))
-                writer.add_scalar(f'val_{d_name}_' + metric2, iou_cur, epoch)
-                log_info.append('\n')
+                if local_rank == 0:
+                    log_info.append('val {}: {}={:.4f}'.format(d_name,metric1, dice_cur))
+                    writer.add_scalar(f'val_{d_name}_'+metric1,  dice_cur, epoch)
+                    log_info.append(' {}={:.4f}'.format(metric2, iou_cur))
+                    writer.add_scalar(f'val_{d_name}_' + metric2, iou_cur, epoch)
+                    log_info.append('\n')
             if epoch_m_dice > best_dice:
                         best_dice = epoch_m_dice
                         early_stop_e = 0
